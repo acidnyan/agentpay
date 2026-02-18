@@ -321,9 +321,11 @@ async function main(){
       // Some injected providers return incomplete tx response objects (e.g., missing nonce).
       // To be robust, we populate the transaction and send it via signer.
       const txReq = await usdc.transfer.populateTransaction(to, units);
-      txReq.from = connectedAddress;
+
+      // Only set nonce if we can fetch it; do not pass undefined.
       try {
-        txReq.nonce = await browserProvider.getTransactionCount(connectedAddress, 'latest');
+        const nonce = await signer.getNonce();
+        if (nonce !== undefined && nonce !== null) txReq.nonce = nonce;
       } catch {}
 
       const tx = await signer.sendTransaction(txReq);
