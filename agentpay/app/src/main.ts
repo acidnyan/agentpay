@@ -376,6 +376,8 @@ async function main() {
 
   function buildInvoiceUrl(to: string, amount: string, memo: string): string {
     const u = new URL(location.href);
+    u.searchParams.set('tab', 'pay');
+    u.searchParams.set('lock', '1');
     u.searchParams.set('to', to);
     u.searchParams.set('amount', amount);
     if (memo) u.searchParams.set('memo', memo);
@@ -578,6 +580,9 @@ async function main() {
     const tabParam = p.get('tab');
     setTab(tabParam === 'create' ? 'create' : 'pay');
 
+    // Lock via URL param
+    invoiceLocked = p.get('lock') === '1';
+
     toEl.value = defTo;
     amountEl.value = defAmount;
     memoEl.value = defMemo;
@@ -603,13 +608,15 @@ async function main() {
   (payBtn as HTMLButtonElement).onclick = () => void pay();
 
   // Invoice creator actions
-  genBtn.onclick = () => {
+  genBtn.onclick = async () => {
     const to = invToEl.value.trim();
     const amount = invAmountEl.value.trim();
     const memo = invMemoEl.value.trim();
     if (!isHexAddress(to)) return showErr('Invoice to が不正です。');
     if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
+    showOk('請求リンクを生成しました。');
+    try { await navigator.clipboard.writeText(invoiceUrlEl.value); setMsg('請求リンクをコピーしました。'); } catch {}
   };
 
   lockBtn.onclick = () => {
