@@ -103,6 +103,21 @@
   import EthereumProvider from 'https://esm.sh/@walletconnect/ethereum-provider@2.16.1?bundle';
   import { ethers } from 'https://esm.sh/ethers@6.16.0?bundle';
 
+  // Surface JS load/runtime errors in the UI (useful on mobile where devtools is hard)
+  const uiLog = [];
+  const rawErr = (msg) => {
+    const el = document.getElementById('err');
+    if (!el) return;
+    el.style.display = 'block';
+    el.textContent = msg;
+  };
+  window.addEventListener('error', (e) => {
+    rawErr(`JS error: ${e?.message || e}`);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    rawErr(`Promise error: ${e?.reason?.message || e?.reason || e}`);
+  });
+
   const WC_PROJECT_ID = '83569f52a2a1226834e65a28e4307fec';
 
   const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -385,6 +400,8 @@
 
     // Helpful: open this page inside Coinbase Wallet in-app browser for best injected support.
     openInCbw.href = buildCbwDappLink(location.href);
+
+    setMsg('JS loaded. Ready.');
 
     refresh();
     setPill();
