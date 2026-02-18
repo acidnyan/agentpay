@@ -152,6 +152,7 @@ async function main(){
   function showOk(msg){ okEl.style.display = msg ? 'block' : 'none'; okEl.textContent = msg || ''; }
   function setMsg(msg){ msgEl.textContent = msg || ''; }
   function setBal(msg){ balEl.textContent = msg || ''; }
+  function setBalHtml(html){ balEl.innerHTML = html || ''; }
 
   let wcProvider=null;
   let browserProvider=null;
@@ -190,9 +191,15 @@ async function main(){
     } else {
       const whole = (usdcBalanceUnits / 1000000n).toString();
       const frac = (usdcBalanceUnits % 1000000n).toString().padStart(6,'0').replace(/0+$/,'');
-      const chainTxt = lastChainId ? ` / chainId: ${lastChainId}` : '';
+      const chainTxt = lastChainId ? `chainId: ${lastChainId}` : 'chainId: (unknown)';
       const errTxt = lastBalErr ? ` / balErr: ${lastBalErr}` : '';
-      setBal(`USDC残高: ${frac ? `${whole}.${frac}` : whole}${chainTxt}${errTxt}`);
+      const basescan = `https://basescan.org/address/${connectedAddress}`;
+      const holdings = `https://basescan.org/tokenholdings?a=${connectedAddress}`;
+
+      const balText = `USDC残高: ${frac ? `${whole}.${frac}` : whole}`;
+      const warn = (usdcBalanceUnits === 0n) ? '<br/><span class="warn">※BaseScan上でもUSDCが無い場合、MetaMask側の表示（別ネットワーク/キャッシュ/別アカウント）と食い違っている可能性があります。</span>' : '';
+
+      setBalHtml(`${balText} / ${chainTxt}${errTxt}<br/>BaseScan: <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${basescan}">address</a> <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${holdings}">token holdings</a>${warn}`);
     }
   }
 
