@@ -54,7 +54,8 @@
 
       <div class="btns">
         <button id="copy" class="primary">コピー（宛先/金額/メモ）</button>
-        <a id="walletLink" class="btn primary" target="_blank" rel="noreferrer">ウォレットで開く</a>
+        <a id="walletLink" class="btn primary" target="_blank" rel="noreferrer">ウォレットで開く（汎用）</a>
+        <a id="cbwLink" class="btn" target="_blank" rel="noreferrer">Coinbase Walletで開く</a>
         <a id="basescan" class="btn" target="_blank" rel="noreferrer">BaseScanで見る</a>
       </div>
       <div id="err" class="warn" style="margin-top:10px;display:none"></div>
@@ -64,6 +65,8 @@
       <div class="muted">
         このリンクは <span class="mono">Base</span> 上の <span class="mono">USDC</span> 支払い用です（資金を預かりません）。
         送金は不可逆なので、宛先と金額を確認してから実行してください。
+        <br />
+        ※PCブラウザだと「ウォレットで開く（汎用）」が空タブになることがあります。その場合は「Coinbase Walletで開く」を試してください（スマホ推奨）。
       </div>
       <div class="small" style="margin-top:10px">
         USDC contract (Base): <span class="mono" id="usdc"></span>
@@ -89,6 +92,7 @@
   const memoEl = $('memo');
   const errEl = $('err');
   const walletLink = $('walletLink');
+  const cbwLink = $('cbwLink');
   const basescan = $('basescan');
   const share = $('share');
 
@@ -126,7 +130,17 @@
     return `ethereum:${USDC}@${CHAIN_ID}/transfer?address=${encodeURIComponent(to)}&uint256=${amountUnits.toString()}`;
   }
 
+  function isMobile(){
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  function buildCbwDappLink(targetUrl){
+    // Coinbase Wallet deep link wrapper. Works best on mobile.
+    return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(targetUrl)}`;
+  }
+
   function buildShareUrl(to, amount, memo){
+
     const u = new URL(location.href);
     u.searchParams.set('to', to);
     u.searchParams.set('amount', amount);
@@ -145,6 +159,9 @@
     basescan.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
 
     const units = usdcToUnits(amount);
+    // Default disabled
+    cbwLink.href = '#';
+
     if (!isHexAddress(to)) {
       walletLink.href = '#';
       walletLink.setAttribute('aria-disabled','true');
@@ -156,7 +173,12 @@
       walletLink.classList.remove('primary');
       showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
     } else {
-      walletLink.href = buildEip681(to, units);
+      const eip = buildEip681(to, units);
+      // On desktop browsers, the `ethereum:` scheme often opens a blank tab.
+      // Provide a Coinbase Wallet wrapper link as a more reliable fallback.
+      walletLink.href = eip;
+      cbwLink.href = buildCbwDappLink(eip);
+
       walletLink.removeAttribute('aria-disabled');
       walletLink.classList.add('primary');
     }
