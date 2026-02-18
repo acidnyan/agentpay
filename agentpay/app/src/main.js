@@ -317,12 +317,20 @@ async function main(){
     try{
       if(wcProvider) await ensureBaseWc(); else await ensureBaseInjected();
       const usdc = new ethers.Contract(USDC, ERC20_ABI, signer);
-      const tx = await usdc.transfer(to, units);
+
+      // Some injected providers return incomplete tx response objects (e.g., missing nonce).
+      // To be robust, we populate the transaction and send it via signer.
+      const txReq = await usdc.transfer.populateTransaction(to, units);
+      txReq.from = connectedAddress;
+      try {
+        txReq.nonce = await browserProvider.getTransactionCount(connectedAddress, 'latest');
+      } catch {}
+
+      const tx = await signer.sendTransaction(txReq);
       setMsg(`送信しました。承認待ち… (${tx.hash.slice(0,10)}…)`);
       const rc = await tx.wait();
       showOk(`支払い完了: ${rc.hash}`);
       setMsg('');
-      // refresh balance
       await updateUsdcBalance();
       if(memo){ try{ await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${rc.hash}`);}catch{} }
     } catch(e){
