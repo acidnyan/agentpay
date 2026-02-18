@@ -333,7 +333,7 @@ async function main(){
 
   function init(){
     const p=new URL(location.href).searchParams;
-    toEl.value = p.get('to') || '0x9f9dfBc8FD1263A914E62F8329BB4FA94F842aBe';
+    toEl.value = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
     amountEl.value = p.get('amount') || '';
     memoEl.value = p.get('memo') || '';
     openInCbw.href = buildCbwDappLink(location.href);
