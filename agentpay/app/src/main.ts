@@ -104,6 +104,14 @@ async function main() {
       </div>
 
       <div class="card">
+        <div class="btns" style="margin-top:0">
+          <button id="tabPay" class="primary">支払い</button>
+          <button id="tabCreate">請求作成</button>
+        </div>
+        <div class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
+      </div>
+
+      <div id="panelPay" class="card">
         <div class="row">
           <div class="col">
             <label>支払い先 (to)</label>
@@ -146,7 +154,9 @@ async function main() {
         </div>
       </div>
 
-      <div class="card">
+      </div>
+
+      <div id="panelCreate" class="card" style="display:none">
         <div class="muted" style="margin-bottom:8px">請求作成（Invoice Creator）</div>
         <div class="row">
           <div class="col">
@@ -190,6 +200,11 @@ async function main() {
 
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
+  const tabPayBtn = $('tabPay') as HTMLButtonElement;
+  const tabCreateBtn = $('tabCreate') as HTMLButtonElement;
+  const panelPay = $('panelPay')!;
+  const panelCreate = $('panelCreate')!;
+
   const toEl = $('to') as HTMLInputElement;
   const amountEl = $('amount') as HTMLInputElement;
   const memoEl = $('memo') as HTMLInputElement;
@@ -218,6 +233,18 @@ async function main() {
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
   const copyBtn = $('copy') as HTMLButtonElement;
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
+
+  type Tab = 'pay' | 'create';
+  let activeTab: Tab = 'pay';
+
+  function setTab(tab: Tab) {
+    activeTab = tab;
+    const payOn = tab === 'pay';
+    panelPay.style.display = payOn ? 'block' : 'none';
+    panelCreate.style.display = payOn ? 'none' : 'block';
+    tabPayBtn.classList.toggle('primary', payOn);
+    tabCreateBtn.classList.toggle('primary', !payOn);
+  }
 
   function showErr(msg: string) {
     errEl.style.display = msg ? 'block' : 'none';
@@ -545,6 +572,10 @@ async function main() {
     const defAmount = p.get('amount') || '';
     const defMemo = p.get('memo') || '';
 
+    // Tab: allow `tab=create` to open creator first
+    const tabParam = p.get('tab');
+    setTab(tabParam === 'create' ? 'create' : 'pay');
+
     toEl.value = defTo;
     amountEl.value = defAmount;
     memoEl.value = defMemo;
@@ -561,6 +592,9 @@ async function main() {
     refresh();
     setPill();
   }
+
+  tabPayBtn.onclick = () => setTab('pay');
+  tabCreateBtn.onclick = () => setTab('create');
 
   connectBtn.onclick = () => void connect().catch((e) => showErr(e?.message || String(e)));
   disconnectBtn.onclick = () => void disconnect();
