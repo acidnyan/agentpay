@@ -58,6 +58,7 @@
 
       <div class="btns">
         <button id="connect" class="primary">ウォレット接続</button>
+        <a id="openInCbw" class="btn" target="_blank" rel="noreferrer">Coinbase Walletで開く</a>
         <button id="disconnect">切断</button>
         <button id="pay" class="ok" disabled>支払う（USDC送金）</button>
         <button id="copy" class="primary">コピー（宛先/金額/メモ）</button>
@@ -125,6 +126,7 @@
   const basescanEl = $('basescan');
   const netPill = $('netPill');
   const payBtn = $('pay');
+  const openInCbw = $('openInCbw');
 
   $('usdc').textContent = USDC;
 
@@ -252,7 +254,6 @@
           }
         }
 
-        // Listen for account changes
         window.ethereum.on?.('accountsChanged', (accounts) => {
           connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
           setPill();
@@ -264,52 +265,59 @@
         refresh();
         return;
       } catch (e) {
-        // fall back to WalletConnect
+        showErr(`Injected接続に失敗: ${e?.message || e}`);
       }
+    } else {
+      showErr('Injected wallet (window.ethereum) が見つかりません。Coinbase Wallet内ブラウザで開くと解決することがあります。');
     }
 
     // WalletConnect fallback
-    wcProvider = await EthereumProvider.init({
-      projectId: WC_PROJECT_ID,
-      chains: [CHAIN_ID],
-      optionalChains: [CHAIN_ID],
-      showQrModal: true,
-      methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData', 'eth_signTypedData_v4'],
-      events: ['accountsChanged', 'chainChanged', 'disconnect'],
-      metadata: {
-        name: 'AgentPay',
-        description: 'Base USDC invoice link',
-        url: location.href,
-        icons: []
-      }
-    });
+    try {
+      wcProvider = await EthereumProvider.init({
+        projectId: WC_PROJECT_ID,
+        chains: [CHAIN_ID],
+        optionalChains: [CHAIN_ID],
+        showQrModal: true,
+        methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData', 'eth_signTypedData_v4'],
+        events: ['accountsChanged', 'chainChanged', 'disconnect'],
+        metadata: {
+          name: 'AgentPay',
+          description: 'Base USDC invoice link',
+          url: location.href,
+          icons: []
+        }
+      });
 
-    await wcProvider.connect();
+      await wcProvider.connect();
 
-    browserProvider = new ethers.BrowserProvider(wcProvider);
-    signer = await browserProvider.getSigner();
-    connectedAddress = await signer.getAddress();
+      browserProvider = new ethers.BrowserProvider(wcProvider);
+      signer = await browserProvider.getSigner();
+      connectedAddress = await signer.getAddress();
 
-    await ensureBaseChain();
+      await ensureBaseChain();
 
-    wcProvider.on('accountsChanged', async (accounts) => {
-      connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
+      wcProvider.on('accountsChanged', async (accounts) => {
+        connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
+        setPill();
+        refresh();
+      });
+
+      wcProvider.on('chainChanged', async () => {
+        try { await ensureBaseChain(); } catch {}
+        refresh();
+      });
+
+      wcProvider.on('disconnect', () => {
+        disconnect();
+      });
+
       setPill();
+      setMsg('接続しました（WalletConnect）。');
       refresh();
-    });
-
-    wcProvider.on('chainChanged', async () => {
-      try { await ensureBaseChain(); } catch {}
-      refresh();
-    });
-
-    wcProvider.on('disconnect', () => {
-      disconnect();
-    });
-
-    setPill();
-    setMsg('接続しました（WalletConnect）。');
-    refresh();
+    } catch (e) {
+      showErr(`WalletConnect接続に失敗: ${e?.message || e}`);
+      setMsg('');
+    }
   }
 
   async function disconnect(){
@@ -361,6 +369,10 @@
     }
   }
 
+  function buildCbwDappLink(targetUrl){
+    return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(targetUrl)}`;
+  }
+
   function init(){
     const p = qp();
     const defTo = p.get('to') || '0x9f9dfBc8FD1263A914E62F8329BB4FA94F842aBe';
@@ -370,6 +382,9 @@
     toEl.value = defTo;
     amountEl.value = defAmount;
     memoEl.value = defMemo;
+
+    // Helpful: open this page inside Coinbase Wallet in-app browser for best injected support.
+    openInCbw.href = buildCbwDappLink(location.href);
 
     refresh();
     setPill();
