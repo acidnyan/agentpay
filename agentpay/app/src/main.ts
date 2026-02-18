@@ -147,6 +147,37 @@ async function main() {
       </div>
 
       <div class="card">
+        <div class="muted" style="margin-bottom:8px">請求作成（Invoice Creator）</div>
+        <div class="row">
+          <div class="col">
+            <label>to</label>
+            <input id="invTo" class="mono" placeholder="0x..." />
+          </div>
+          <div class="col">
+            <label>amount (USDC)</label>
+            <input id="invAmount" class="mono" placeholder="10" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col" style="min-width:100%">
+            <label>memo (optional)</label>
+            <input id="invMemo" placeholder="task-123" />
+          </div>
+        </div>
+        <div class="btns">
+          <button id="gen" class="primary">請求リンク生成</button>
+          <button id="lock">ロック: OFF</button>
+          <button id="apply">この請求をフォームに反映</button>
+        </div>
+        <div class="muted" style="margin-top:10px">生成された請求リンク</div>
+        <div class="row">
+          <input id="invoiceUrl" class="mono" readonly />
+          <button id="copyInvoice">URLコピー</button>
+        </div>
+        <div class="small" style="margin-top:8px">ロック中は上の支払いフォーム（to/amount/memo）を編集不可にして誤送金を防ぎます。</div>
+      </div>
+
+      <div class="card">
         <div class="muted" style="margin-bottom:8px">共有用リンク（このページのURL）</div>
         <div class="row">
           <input id="share" class="mono" readonly />
@@ -172,6 +203,16 @@ async function main() {
   const shareEl = $('share') as HTMLInputElement;
   const basescanEl = $('basescan') as HTMLAnchorElement;
   const openInCbw = $('openInCbw') as HTMLAnchorElement;
+
+  // Invoice creator
+  const invToEl = $('invTo') as HTMLInputElement;
+  const invAmountEl = $('invAmount') as HTMLInputElement;
+  const invMemoEl = $('invMemo') as HTMLInputElement;
+  const invoiceUrlEl = $('invoiceUrl') as HTMLInputElement;
+  const genBtn = $('gen') as HTMLButtonElement;
+  const lockBtn = $('lock') as HTMLButtonElement;
+  const applyBtn = $('apply') as HTMLButtonElement;
+  const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
 
   const connectBtn = $('connect') as HTMLButtonElement;
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
@@ -292,6 +333,25 @@ async function main() {
     }
 
     refresh();
+  }
+
+  let invoiceLocked = false;
+
+  function setLockUI() {
+    lockBtn.textContent = `ロック: ${invoiceLocked ? 'ON' : 'OFF'}`;
+    // Lock payment form inputs
+    toEl.readOnly = invoiceLocked;
+    amountEl.readOnly = invoiceLocked;
+    memoEl.readOnly = invoiceLocked;
+  }
+
+  function buildInvoiceUrl(to: string, amount: string, memo: string): string {
+    const u = new URL(location.href);
+    u.searchParams.set('to', to);
+    u.searchParams.set('amount', amount);
+    if (memo) u.searchParams.set('memo', memo);
+    else u.searchParams.delete('memo');
+    return u.toString();
   }
 
   function refresh() {
@@ -481,12 +541,23 @@ async function main() {
 
   function init() {
     const p = new URL(location.href).searchParams;
-    toEl.value = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
-    amountEl.value = p.get('amount') || '';
-    memoEl.value = p.get('memo') || '';
+    const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
+    const defAmount = p.get('amount') || '';
+    const defMemo = p.get('memo') || '';
+
+    toEl.value = defTo;
+    amountEl.value = defAmount;
+    memoEl.value = defMemo;
+
+    // Invoice creator defaults from current values
+    invToEl.value = defTo;
+    invAmountEl.value = defAmount;
+    invMemoEl.value = defMemo;
+    invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo) : '';
 
     openInCbw.href = buildCbwDappLink(location.href);
 
+    setLockUI();
     refresh();
     setPill();
   }
@@ -494,6 +565,32 @@ async function main() {
   connectBtn.onclick = () => void connect().catch((e) => showErr(e?.message || String(e)));
   disconnectBtn.onclick = () => void disconnect();
   (payBtn as HTMLButtonElement).onclick = () => void pay();
+
+  // Invoice creator actions
+  genBtn.onclick = () => {
+    const to = invToEl.value.trim();
+    const amount = invAmountEl.value.trim();
+    const memo = invMemoEl.value.trim();
+    if (!isHexAddress(to)) return showErr('Invoice to が不正です。');
+    if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
+    invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
+  };
+
+  lockBtn.onclick = () => {
+    invoiceLocked = !invoiceLocked;
+    setLockUI();
+  };
+
+  applyBtn.onclick = () => {
+    toEl.value = invToEl.value.trim();
+    amountEl.value = invAmountEl.value.trim();
+    memoEl.value = invMemoEl.value.trim();
+    refresh();
+  };
+
+  copyInvoiceBtn.onclick = async () => {
+    if (invoiceUrlEl.value) await navigator.clipboard.writeText(invoiceUrlEl.value);
+  };
 
   copyBtn.onclick = async () => {
     const to = toEl.value.trim();
@@ -507,9 +604,9 @@ async function main() {
     await navigator.clipboard.writeText(shareEl.value);
   };
 
-  toEl.addEventListener('input', refresh);
-  amountEl.addEventListener('input', refresh);
-  memoEl.addEventListener('input', refresh);
+  toEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
+  amountEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
+  memoEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
 
   init();
 }
