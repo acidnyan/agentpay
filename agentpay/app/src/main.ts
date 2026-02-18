@@ -179,7 +179,7 @@ async function main() {
             <div class="btns" style="margin-top:0">
               <button id="amtFlex" type="button">OFF（固定）</button>
             </div>
-            <div class="small">ONにすると、受け取った人がamountを変更できます（to/memoは固定）。</div>
+            <div class="small">ONで金額のみ編集可（宛先/メモは固定）。</div>
           </div>
         </div>
 
@@ -193,7 +193,7 @@ async function main() {
           <input id="invoiceUrl" class="mono" readonly />
           <button id="copyInvoice">URLコピー</button>
         </div>
-        <div class="small" style="margin-top:8px">ロック中は上の支払いフォーム（to/amount/memo）を編集不可にして誤送金を防ぎます。</div>
+        <div class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
       </div>
 
       <div class="card">
@@ -611,6 +611,8 @@ async function main() {
     invAmountEl.value = defAmount;
     invMemoEl.value = defMemo;
     invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo) : '';
+    // disable copy if empty
+    copyInvoiceBtn.disabled = !invoiceUrlEl.value;
 
     openInCbw.href = buildCbwDappLink(location.href);
 
@@ -627,6 +629,10 @@ async function main() {
   (payBtn as HTMLButtonElement).onclick = () => void pay();
 
   // Invoice creator actions
+  function updateInvoiceButtons() {
+    copyInvoiceBtn.disabled = !invoiceUrlEl.value;
+  }
+
   genBtn.onclick = async () => {
     const to = invToEl.value.trim();
     const amount = invAmountEl.value.trim();
@@ -634,6 +640,7 @@ async function main() {
     if (!isHexAddress(to)) return showErr('Invoice to が不正です。');
     if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
+    updateInvoiceButtons();
     showOk('請求リンクを生成しました。');
     try { await navigator.clipboard.writeText(invoiceUrlEl.value); setMsg('請求リンクをコピーしました。'); } catch {}
   };
@@ -656,7 +663,9 @@ async function main() {
   };
 
   copyInvoiceBtn.onclick = async () => {
-    if (invoiceUrlEl.value) await navigator.clipboard.writeText(invoiceUrlEl.value);
+    if (!invoiceUrlEl.value) return;
+    await navigator.clipboard.writeText(invoiceUrlEl.value);
+    showOk('請求リンクをコピーしました。');
   };
 
   copyBtn.onclick = async () => {
