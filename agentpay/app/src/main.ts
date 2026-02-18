@@ -199,11 +199,21 @@ async function main() {
       </div>
 
       <div class="card">
-        <div class="muted" style="margin-bottom:8px">共有用リンク（このページのURL）</div>
+        <div class="muted" style="margin-bottom:8px">ページURL（このページのトップ）</div>
+        <div class="row">
+          <input id="pageUrl" class="mono" readonly />
+          <button id="copyPage">URLコピー</button>
+        </div>
+        <div class="small" style="margin-top:8px">パラメータ無しのURL。案内・ブックマーク用。</div>
+      </div>
+
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px">共有用リンク（現在のURL / パラメータ付き）</div>
         <div class="row">
           <input id="share" class="mono" readonly />
           <button id="copyShare">URLコピー</button>
         </div>
+        <div class="small" style="margin-top:8px">請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。</div>
       </div>
     </div>
   `)
@@ -227,6 +237,7 @@ async function main() {
   const okEl = $('ok')!;
   const netPill = $('netPill')!;
   const payBtn = $('pay') as HTMLButtonElement;
+  const pageUrlEl = $('pageUrl') as HTMLInputElement;
   const shareEl = $('share') as HTMLInputElement;
   const basescanEl = $('basescan') as HTMLAnchorElement;
   const openInCbw = $('openInCbw') as HTMLAnchorElement;
@@ -245,6 +256,7 @@ async function main() {
   const connectBtn = $('connect') as HTMLButtonElement;
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
   const copyBtn = $('copy') as HTMLButtonElement;
+  const copyPageBtn = $('copyPage') as HTMLButtonElement;
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
 
   type Tab = 'pay' | 'create';
@@ -429,6 +441,9 @@ async function main() {
 
     const units = usdcToUnits(amount);
     const valid = isHexAddress(to) && units !== null;
+
+    // Page URL (no params)
+    pageUrlEl.value = `${location.origin}${location.pathname}`;
 
     shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
 
@@ -706,6 +721,17 @@ async function main() {
       await navigator.clipboard.writeText(text);
       toast('コピーしました');
     } catch (e) {
+      showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
+      toast('コピー失敗');
+    }
+  };
+
+  copyPageBtn.onclick = async () => {
+    toast('コピー中…');
+    try {
+      await navigator.clipboard.writeText(pageUrlEl.value);
+      toast('ページURLをコピーしました');
+    } catch {
       showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
       toast('コピー失敗');
     }
