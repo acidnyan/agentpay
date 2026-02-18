@@ -7,6 +7,8 @@ const CHAIN_ID = 8453;
 const CHAIN_ID_HEX = '0x2105';
 
 const ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)',
   'function transfer(address to, uint256 value) returns (bool)'
 ];
 
@@ -108,6 +110,7 @@ async function main(){
         </div>
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
+        <div id="bal" class="muted" style="margin-top:6px"></div>
         <div id="err" class="warn" style="margin-top:10px;display:none"></div>
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
 
@@ -136,6 +139,7 @@ async function main(){
   const amountEl = $('amount');
   const memoEl = $('memo');
   const msgEl = $('msg');
+  const balEl = $('bal');
   const errEl = $('err');
   const okEl = $('ok');
   const netPill = $('netPill');
@@ -147,6 +151,7 @@ async function main(){
   function showErr(msg){ errEl.style.display = msg ? 'block' : 'none'; errEl.textContent = msg || ''; }
   function showOk(msg){ okEl.style.display = msg ? 'block' : 'none'; okEl.textContent = msg || ''; }
   function setMsg(msg){ msgEl.textContent = msg || ''; }
+  function setBal(msg){ balEl.textContent = msg || ''; }
 
   let wcProvider=null;
   let browserProvider=null;
@@ -156,6 +161,9 @@ async function main(){
   function setPill(){
     netPill.textContent = connectedAddress ? `Wallet: ${connectedAddress.slice(0,6)}…${connectedAddress.slice(-4)}` : 'Wallet: not connected';
   }
+
+  let usdcDecimals = 6;
+  let usdcBalanceUnits = 0n;
 
   function refresh(){
     const to=toEl.value.trim();
@@ -167,9 +175,23 @@ async function main(){
     const units=usdcToUnits(amount);
     const valid=isHexAddress(to) && units!==null;
     shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
-    payBtn.disabled = !(connectedAddress && valid);
+
+    const hasBalance = (units !== null) ? (usdcBalanceUnits >= units) : false;
+    // Disable pay if not connected, invalid, or insufficient balance
+    payBtn.disabled = !(connectedAddress && valid && hasBalance);
+
     if(!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
     else if(units===null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
+    else if(connectedAddress && !hasBalance) showErr('USDC残高が不足しています。');
+
+    // Balance display
+    if (!connectedAddress) {
+      setBal('USDC残高: (未接続)');
+    } else {
+      const whole = (usdcBalanceUnits / 1000000n).toString();
+      const frac = (usdcBalanceUnits % 1000000n).toString().padStart(6,'0').replace(/0+$/,'');
+      setBal(`USDC残高: ${frac ? `${whole}.${frac}` : whole}`);
+    }
   }
 
   async function ensureBaseInjected(){
@@ -196,6 +218,27 @@ async function main(){
     }
   }
 
+  async function updateUsdcBalance(){
+    if (!connectedAddress || !browserProvider) {
+      usdcBalanceUnits = 0n;
+      refresh();
+      return;
+    }
+    try {
+      const usdc = new ethers.Contract(USDC, ERC20_ABI, browserProvider);
+      // decimals should be 6 but read anyway
+      usdcDecimals = Number(await usdc.decimals());
+      if (usdcDecimals !== 6) {
+        // our parser assumes 6; keep display but note mismatch
+        // (we still use 6-decimal units conversion for input)
+      }
+      usdcBalanceUnits = await usdc.balanceOf(connectedAddress);
+    } catch {
+      usdcBalanceUnits = 0n;
+    }
+    refresh();
+  }
+
   async function connect(){
     showErr(''); showOk(''); setMsg('ウォレット接続中…');
     if(window.ethereum){
@@ -205,7 +248,9 @@ async function main(){
         browserProvider = new ethers.BrowserProvider(window.ethereum);
         signer = await browserProvider.getSigner();
         connectedAddress = await signer.getAddress();
-        setPill(); setMsg('接続しました（Injected Wallet）。'); refresh();
+        setPill();
+        setMsg('接続しました（Injected Wallet）。');
+        await updateUsdcBalance();
         return;
       } catch(e){
         showErr(`Injected接続に失敗: ${e?.message||e}`);
@@ -219,7 +264,9 @@ async function main(){
       signer = await browserProvider.getSigner();
       connectedAddress = await signer.getAddress();
       await ensureBaseWc();
-      setPill(); setMsg('接続しました（WalletConnect）。'); refresh();
+      setPill();
+      setMsg('接続しました（WalletConnect）。');
+      await updateUsdcBalance();
     } catch(e){
       showErr(`WalletConnect接続に失敗: ${e?.message||e}`);
       setMsg('');
@@ -242,6 +289,7 @@ async function main(){
     if(!connectedAddress) return showErr('先にウォレット接続してください。');
     if(!isHexAddress(to)) return showErr('宛先(to)が不正です。');
     if(units===null) return showErr('金額が不正です。');
+    if(usdcBalanceUnits < units) return showErr('USDC残高が不足しています。');
 
     setMsg('トランザクション作成中…');
     try{
@@ -252,6 +300,8 @@ async function main(){
       const rc = await tx.wait();
       showOk(`支払い完了: ${rc.hash}`);
       setMsg('');
+      // refresh balance
+      await updateUsdcBalance();
       if(memo){ try{ await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${rc.hash}`);}catch{} }
     } catch(e){
       showErr(e?.shortMessage || e?.message || String(e));
