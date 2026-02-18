@@ -1,0 +1,19 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@walletconnect/ethereum-provider": "^2.16.1",
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}
