@@ -99,335 +99,318 @@
     </div>
   </div>
 
-<script type="module">
-  import EthereumProvider from 'https://esm.sh/@walletconnect/ethereum-provider@2.16.1?bundle';
-  import { ethers } from 'https://esm.sh/ethers@6.16.0?bundle';
-
-  // Surface JS load/runtime errors in the UI (useful on mobile where devtools is hard)
-  const uiLog = [];
-  const rawErr = (msg) => {
+<script>
+  // --- Diagnostics (show any JS load/runtime errors in the UI) ---
+  function rawErr(msg) {
     const el = document.getElementById('err');
     if (!el) return;
     el.style.display = 'block';
     el.textContent = msg;
-  };
-  window.addEventListener('error', (e) => {
-    rawErr(`JS error: ${e?.message || e}`);
-  });
-  window.addEventListener('unhandledrejection', (e) => {
-    rawErr(`Promise error: ${e?.reason?.message || e?.reason || e}`);
-  });
-
-  const WC_PROJECT_ID = '83569f52a2a1226834e65a28e4307fec';
-
-  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-  const CHAIN_ID = 8453; // Base
-  const CHAIN_ID_HEX = '0x2105';
-
-  const ERC20_ABI = [
-    'function decimals() view returns (uint8)',
-    'function symbol() view returns (string)',
-    'function transfer(address to, uint256 value) returns (bool)'
-  ];
-
-  const $ = (id) => document.getElementById(id);
-  const toEl = $('to');
-  const amountEl = $('amount');
-  const memoEl = $('memo');
-  const errEl = $('err');
-  const okEl = $('ok');
-  const msgEl = $('msg');
-  const shareEl = $('share');
-  const basescanEl = $('basescan');
-  const netPill = $('netPill');
-  const payBtn = $('pay');
-  const openInCbw = $('openInCbw');
-
-  $('usdc').textContent = USDC;
-
-  let wcProvider = null;
-  let browserProvider = null;
-  let signer = null;
-  let connectedAddress = null;
-
-  function showErr(msg){ errEl.style.display = msg ? 'block' : 'none'; errEl.textContent = msg || ''; }
-  function showOk(msg){ okEl.style.display = msg ? 'block' : 'none'; okEl.textContent = msg || ''; }
-  function setMsg(msg){ msgEl.textContent = msg || ''; }
-
-  function qp(){
-    const u = new URL(location.href);
-    return u.searchParams;
   }
+  window.addEventListener('error', (e) => rawErr(`JS error: ${e?.message || e}`));
+  window.addEventListener('unhandledrejection', (e) => rawErr(`Promise error: ${e?.reason?.message || e?.reason || e}`));
 
-  function isHexAddress(a){
-    return /^0x[0-9a-fA-F]{40}$/.test(a);
-  }
-
-  function usdcToUnits(str){
-    const s = (str||'').trim();
-    if(!s) return null;
-    if(!/^\d+(\.\d+)?$/.test(s)) return null;
-    const [i, f=''] = s.split('.');
-    if(f.length > 6) return null;
-    const frac = (f + '000000').slice(0,6);
-    return BigInt(i) * 1000000n + BigInt(frac);
-  }
-
-  function buildShareUrl(to, amount, memo){
-    const u = new URL(location.href);
-    u.searchParams.set('to', to);
-    u.searchParams.set('amount', amount);
-    if (memo) u.searchParams.set('memo', memo);
-    else u.searchParams.delete('memo');
-    return u.toString();
-  }
-
-  function refresh(){
-    const to = toEl.value.trim();
-    const amount = amountEl.value.trim();
-    const memo = memoEl.value.trim();
-
-    showErr('');
-    showOk('');
-
-    basescanEl.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
-
-    const units = usdcToUnits(amount);
-
-    const valid = isHexAddress(to) && units !== null;
-    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
-
-    // Pay enabled only when connected + valid invoice
-    payBtn.disabled = !(connectedAddress && valid);
-
-    if (!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
-    else if (units === null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
-  }
-
-  function setPill(){
-    if (!connectedAddress) {
-      netPill.textContent = 'Wallet: not connected';
-      return;
-    }
-    netPill.textContent = `Wallet: ${connectedAddress.slice(0,6)}…${connectedAddress.slice(-4)}`;
-  }
-
-  async function ensureBaseChain(){
-    const chainId = await wcProvider.request({ method: 'eth_chainId' });
-    if (chainId === CHAIN_ID_HEX) return;
-
-    // Try switch
+  // --- Lazy-load deps via dynamic import so we can catch/print failures ---
+  (async () => {
     try {
-      await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+      const [{ default: EthereumProvider }, { ethers }] = await Promise.all([
+        import('https://esm.sh/@walletconnect/ethereum-provider@2.16.1?bundle'),
+        import('https://esm.sh/ethers@6.16.0?bundle'),
+      ]);
+      startApp({ EthereumProvider, ethers });
     } catch (e) {
-      // If chain not added, add it
-      if (e?.code === 4902) {
-        await wcProvider.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: CHAIN_ID_HEX,
-            chainName: 'Base',
-            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            rpcUrls: ['https://mainnet.base.org'],
-            blockExplorerUrls: ['https://basescan.org']
-          }]
-        });
-      } else {
-        throw e;
+      rawErr(`Load deps failed (esm.sh blocked?): ${e?.message || e}`);
+    }
+  })();
+
+  function startApp({ EthereumProvider, ethers }) {
+    const WC_PROJECT_ID = '83569f52a2a1226834e65a28e4307fec';
+    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    const CHAIN_ID = 8453;
+    const CHAIN_ID_HEX = '0x2105';
+    const ERC20_ABI = [
+      'function transfer(address to, uint256 value) returns (bool)'
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    const toEl = $('to');
+    const amountEl = $('amount');
+    const memoEl = $('memo');
+    const errEl = $('err');
+    const okEl = $('ok');
+    const msgEl = $('msg');
+    const shareEl = $('share');
+    const basescanEl = $('basescan');
+    const netPill = $('netPill');
+    const payBtn = $('pay');
+    const openInCbw = $('openInCbw');
+
+    $('usdc').textContent = USDC;
+
+    let wcProvider = null;
+    let browserProvider = null;
+    let signer = null;
+    let connectedAddress = null;
+
+    function showErr(msg){ errEl.style.display = msg ? 'block' : 'none'; errEl.textContent = msg || ''; }
+    function showOk(msg){ okEl.style.display = msg ? 'block' : 'none'; okEl.textContent = msg || ''; }
+    function setMsg(msg){ msgEl.textContent = msg || ''; }
+
+    function qp(){
+      const u = new URL(location.href);
+      return u.searchParams;
+    }
+
+    function isHexAddress(a){
+      return /^0x[0-9a-fA-F]{40}$/.test(a);
+    }
+
+    function usdcToUnits(str){
+      const s = (str||'').trim();
+      if(!s) return null;
+      if(!/^\d+(\.\d+)?$/.test(s)) return null;
+      const [i, f=''] = s.split('.');
+      if(f.length > 6) return null;
+      const frac = (f + '000000').slice(0,6);
+      return BigInt(i) * 1000000n + BigInt(frac);
+    }
+
+    function buildShareUrl(to, amount, memo){
+      const u = new URL(location.href);
+      u.searchParams.set('to', to);
+      u.searchParams.set('amount', amount);
+      if (memo) u.searchParams.set('memo', memo);
+      else u.searchParams.delete('memo');
+      return u.toString();
+    }
+
+    function setPill(){
+      if (!connectedAddress) {
+        netPill.textContent = 'Wallet: not connected';
+        return;
+      }
+      netPill.textContent = `Wallet: ${connectedAddress.slice(0,6)}…${connectedAddress.slice(-4)}`;
+    }
+
+    function refresh(){
+      const to = toEl.value.trim();
+      const amount = amountEl.value.trim();
+      const memo = memoEl.value.trim();
+
+      showErr('');
+      showOk('');
+
+      basescanEl.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
+
+      const units = usdcToUnits(amount);
+      const valid = isHexAddress(to) && units !== null;
+      shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
+      payBtn.disabled = !(connectedAddress && valid);
+
+      if (!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
+      else if (units === null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
+    }
+
+    async function ensureBaseChainInjected(){
+      const eth = window.ethereum;
+      if (!eth) return;
+      const chainId = await eth.request({ method: 'eth_chainId' });
+      if (chainId === CHAIN_ID_HEX) return;
+      try {
+        await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+      } catch (e) {
+        if (e?.code === 4902) {
+          await eth.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: CHAIN_ID_HEX,
+              chainName: 'Base',
+              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+              rpcUrls: ['https://mainnet.base.org'],
+              blockExplorerUrls: ['https://basescan.org']
+            }]
+          });
+        } else {
+          throw e;
+        }
       }
     }
-  }
 
-  async function connect(){
-    showErr('');
-    showOk('');
-    setMsg('ウォレット接続中…');
-
-    // Prefer injected provider (MetaMask / Coinbase Wallet in-app browser)
-    if (window.ethereum) {
+    async function ensureBaseChainWc(){
+      const chainId = await wcProvider.request({ method: 'eth_chainId' });
+      if (chainId === CHAIN_ID_HEX) return;
       try {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        browserProvider = new ethers.BrowserProvider(window.ethereum);
+        await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+      } catch (e) {
+        if (e?.code === 4902) {
+          await wcProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: CHAIN_ID_HEX,
+              chainName: 'Base',
+              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+              rpcUrls: ['https://mainnet.base.org'],
+              blockExplorerUrls: ['https://basescan.org']
+            }]
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    async function connect(){
+      showErr('');
+      showOk('');
+      setMsg('ウォレット接続中…');
+
+      // Injected first
+      if (window.ethereum) {
+        try {
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          await ensureBaseChainInjected();
+          browserProvider = new ethers.BrowserProvider(window.ethereum);
+          signer = await browserProvider.getSigner();
+          connectedAddress = await signer.getAddress();
+
+          window.ethereum.on?.('accountsChanged', (accounts) => {
+            connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
+            setPill();
+            refresh();
+          });
+
+          setPill();
+          setMsg('接続しました（Injected Wallet）。');
+          refresh();
+          return;
+        } catch (e) {
+          showErr(`Injected接続に失敗: ${e?.message || e}`);
+        }
+      }
+
+      // WalletConnect fallback
+      try {
+        wcProvider = await EthereumProvider.init({
+          projectId: WC_PROJECT_ID,
+          chains: [CHAIN_ID],
+          optionalChains: [CHAIN_ID],
+          showQrModal: true,
+        });
+
+        await wcProvider.connect();
+        browserProvider = new ethers.BrowserProvider(wcProvider);
         signer = await browserProvider.getSigner();
         connectedAddress = await signer.getAddress();
+        await ensureBaseChainWc();
 
-        // Try to keep on Base
-        try {
-          await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
-        } catch (e) {
-          if (e?.code === 4902) {
-            await window.ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: CHAIN_ID_HEX,
-                chainName: 'Base',
-                nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-                rpcUrls: ['https://mainnet.base.org'],
-                blockExplorerUrls: ['https://basescan.org']
-              }]
-            });
-          }
-        }
-
-        window.ethereum.on?.('accountsChanged', (accounts) => {
+        wcProvider.on('accountsChanged', (accounts) => {
           connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
           setPill();
           refresh();
         });
+        wcProvider.on('disconnect', () => disconnect());
 
         setPill();
-        setMsg('接続しました（Injected Wallet）。');
+        setMsg('接続しました（WalletConnect）。');
         refresh();
-        return;
       } catch (e) {
-        showErr(`Injected接続に失敗: ${e?.message || e}`);
+        showErr(`WalletConnect接続に失敗: ${e?.message || e}`);
+        setMsg('');
       }
-    } else {
-      showErr('Injected wallet (window.ethereum) が見つかりません。Coinbase Wallet内ブラウザで開くと解決することがあります。');
     }
 
-    // WalletConnect fallback
-    try {
-      wcProvider = await EthereumProvider.init({
-        projectId: WC_PROJECT_ID,
-        chains: [CHAIN_ID],
-        optionalChains: [CHAIN_ID],
-        showQrModal: true,
-        methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData', 'eth_signTypedData_v4'],
-        events: ['accountsChanged', 'chainChanged', 'disconnect'],
-        metadata: {
-          name: 'AgentPay',
-          description: 'Base USDC invoice link',
-          url: location.href,
-          icons: []
-        }
-      });
-
-      await wcProvider.connect();
-
-      browserProvider = new ethers.BrowserProvider(wcProvider);
-      signer = await browserProvider.getSigner();
-      connectedAddress = await signer.getAddress();
-
-      await ensureBaseChain();
-
-      wcProvider.on('accountsChanged', async (accounts) => {
-        connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
-        setPill();
-        refresh();
-      });
-
-      wcProvider.on('chainChanged', async () => {
-        try { await ensureBaseChain(); } catch {}
-        refresh();
-      });
-
-      wcProvider.on('disconnect', () => {
-        disconnect();
-      });
-
+    async function disconnect(){
+      showErr('');
+      showOk('');
+      setMsg('');
+      try { await wcProvider?.disconnect(); } catch {}
+      wcProvider = null;
+      browserProvider = null;
+      signer = null;
+      connectedAddress = null;
       setPill();
-      setMsg('接続しました（WalletConnect）。');
       refresh();
-    } catch (e) {
-      showErr(`WalletConnect接続に失敗: ${e?.message || e}`);
-      setMsg('');
     }
-  }
 
-  async function disconnect(){
-    showErr('');
-    showOk('');
-    setMsg('');
-    try { await wcProvider?.disconnect(); } catch {}
-    wcProvider = null;
-    browserProvider = null;
-    signer = null;
-    connectedAddress = null;
-    setPill();
-    refresh();
-  }
+    async function pay(){
+      showErr('');
+      showOk('');
 
-  async function pay(){
-    showErr('');
-    showOk('');
+      const to = toEl.value.trim();
+      const amount = amountEl.value.trim();
+      const memo = memoEl.value.trim();
+      const units = usdcToUnits(amount);
 
-    const to = toEl.value.trim();
-    const amount = amountEl.value.trim();
-    const memo = memoEl.value.trim();
-    const units = usdcToUnits(amount);
+      if (!connectedAddress) return showErr('先にウォレット接続してください。');
+      if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
+      if (units === null) return showErr('金額が不正です。');
 
-    if (!connectedAddress) return showErr('先にウォレット接続してください。');
-    if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
-    if (units === null) return showErr('金額が不正です。');
+      setMsg('トランザクション作成中…');
 
-    setMsg('トランザクション作成中…');
+      try {
+        // Ensure Base chain
+        if (wcProvider) await ensureBaseChainWc();
+        else await ensureBaseChainInjected();
 
-    try {
-      await ensureBaseChain();
+        const usdc = new ethers.Contract(USDC, ERC20_ABI, signer);
+        const tx = await usdc.transfer(to, units);
+        setMsg(`送信しました。承認待ち… (${tx.hash.slice(0,10)}…)`);
+        const rc = await tx.wait();
+        showOk(`支払い完了: ${rc.hash}`);
+        setMsg('');
 
-      // USDC transfer
-      const usdc = new ethers.Contract(USDC, ERC20_ABI, signer);
-      const tx = await usdc.transfer(to, units);
-      setMsg(`送信しました。承認待ち… (${tx.hash.slice(0,10)}…)`);
-      const rc = await tx.wait();
-      showOk(`支払い完了: ${rc.hash}`);
-      setMsg('');
-
-      // If memo exists, copy it to clipboard to help out-of-band matching.
-      if (memo) {
-        try { await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${rc.hash}`); } catch {}
+        if (memo) {
+          try { await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${rc.hash}`); } catch {}
+        }
+      } catch (e) {
+        showErr(e?.shortMessage || e?.message || String(e));
+        setMsg('');
       }
-    } catch (e) {
-      showErr(e?.shortMessage || e?.message || String(e));
-      setMsg('');
     }
+
+    function buildCbwDappLink(targetUrl){
+      return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(targetUrl)}`;
+    }
+
+    function init(){
+      const p = qp();
+      const defTo = p.get('to') || '0x9f9dfBc8FD1263A914E62F8329BB4FA94F842aBe';
+      const defAmount = p.get('amount') || '';
+      const defMemo = p.get('memo') || '';
+
+      toEl.value = defTo;
+      amountEl.value = defAmount;
+      memoEl.value = defMemo;
+
+      openInCbw.href = buildCbwDappLink(location.href);
+
+      setMsg('JS loaded. Ready.');
+      refresh();
+      setPill();
+    }
+
+    $('connect').addEventListener('click', () => connect().catch(e => showErr(e?.message||String(e))));
+    $('disconnect').addEventListener('click', () => disconnect());
+    $('pay').addEventListener('click', () => pay());
+
+    $('copy').addEventListener('click', async () => {
+      const to = toEl.value.trim();
+      const amount = amountEl.value.trim();
+      const memo = memoEl.value.trim();
+      const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
+      await navigator.clipboard.writeText(text);
+    });
+
+    $('copyShare').addEventListener('click', async () => {
+      await navigator.clipboard.writeText(shareEl.value);
+    });
+
+    toEl.addEventListener('input', refresh);
+    amountEl.addEventListener('input', refresh);
+    memoEl.addEventListener('input', refresh);
+
+    init();
   }
-
-  function buildCbwDappLink(targetUrl){
-    return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(targetUrl)}`;
-  }
-
-  function init(){
-    const p = qp();
-    const defTo = p.get('to') || '0x9f9dfBc8FD1263A914E62F8329BB4FA94F842aBe';
-    const defAmount = p.get('amount') || '';
-    const defMemo = p.get('memo') || '';
-
-    toEl.value = defTo;
-    amountEl.value = defAmount;
-    memoEl.value = defMemo;
-
-    // Helpful: open this page inside Coinbase Wallet in-app browser for best injected support.
-    openInCbw.href = buildCbwDappLink(location.href);
-
-    setMsg('JS loaded. Ready.');
-
-    refresh();
-    setPill();
-  }
-
-  $('connect').addEventListener('click', () => connect().catch(e => showErr(e?.message||String(e))));
-  $('disconnect').addEventListener('click', () => disconnect());
-  $('pay').addEventListener('click', () => pay());
-
-  $('copy').addEventListener('click', async () => {
-    const to = toEl.value.trim();
-    const amount = amountEl.value.trim();
-    const memo = memoEl.value.trim();
-    const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
-    await navigator.clipboard.writeText(text);
-  });
-
-  $('copyShare').addEventListener('click', async () => {
-    await navigator.clipboard.writeText(shareEl.value);
-  });
-
-  toEl.addEventListener('input', refresh);
-  amountEl.addEventListener('input', refresh);
-  memoEl.addEventListener('input', refresh);
-
-  init();
 </script>
 </body>
 </html>
