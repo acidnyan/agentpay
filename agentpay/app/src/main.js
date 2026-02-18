@@ -110,6 +110,7 @@ async function main(){
         </div>
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
+        <div id="tx" class="muted" style="margin-top:6px"></div>
         <div id="bal" class="muted" style="margin-top:6px"></div>
         <div id="err" class="warn" style="margin-top:10px;display:none"></div>
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
@@ -139,6 +140,7 @@ async function main(){
   const amountEl = $('amount');
   const memoEl = $('memo');
   const msgEl = $('msg');
+  const txEl = $('tx');
   const balEl = $('bal');
   const errEl = $('err');
   const okEl = $('ok');
@@ -151,6 +153,7 @@ async function main(){
   function showErr(msg){ errEl.style.display = msg ? 'block' : 'none'; errEl.textContent = msg || ''; }
   function showOk(msg){ okEl.style.display = msg ? 'block' : 'none'; okEl.textContent = msg || ''; }
   function setMsg(msg){ msgEl.textContent = msg || ''; }
+  function setTxHtml(html){ txEl.innerHTML = html || ''; }
   function setBal(msg){ balEl.textContent = msg || ''; }
   function setBalHtml(html){ balEl.innerHTML = html || ''; }
 
@@ -184,6 +187,23 @@ async function main(){
     if(!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
     else if(units===null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
     else if(connectedAddress && !hasBalance) showErr('USDC残高が不足しています。');
+
+    // Tx display (populated by pay())
+    if (!window.__agentpay_last_tx) {
+      setTxHtml('');
+    } else {
+      const { hash, memo: m } = window.__agentpay_last_tx;
+      const url = `https://basescan.org/tx/${hash}`;
+      const memoLine = m ? `<br/>memo: <span class="mono">${m}</span>` : '';
+      setTxHtml(`Tx: <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${url}">${hash.slice(0,10)}…</a>${memoLine} <button id="copyTx" style="padding:4px 8px">tx+memoコピー</button>`);
+      setTimeout(() => {
+        const b = document.getElementById('copyTx');
+        if (b) b.onclick = async () => {
+          const text = `tx: ${hash}${m ? `\nmemo: ${m}` : ''}`;
+          try { await navigator.clipboard.writeText(text); } catch {}
+        };
+      }, 0);
+    }
 
     // Balance display
     if (!connectedAddress) {
@@ -337,14 +357,17 @@ async function main(){
         throw new Error('Wallet did not return a transaction hash (eth_sendTransaction failed or was blocked).');
       }
 
-      const txUrl = `https://basescan.org/tx/${hash}`;
+      // Store last tx for UI display/copy
+      window.__agentpay_last_tx = { hash, memo };
+      refresh();
+
       showOk(`Tx submitted: ${hash}`);
-      setMsg(`BaseScan: ${txUrl}`);
+      setMsg('承認・送信しました。confirm待ち…');
 
       await browserProvider.waitForTransaction(hash);
 
       showOk(`支払い完了: ${hash}`);
-      setMsg(`BaseScan: ${txUrl}`);
+      setMsg('confirmed');
       await updateUsdcBalance();
 
       if(memo){
