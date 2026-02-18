@@ -190,7 +190,9 @@ async function main(){
     } else {
       const whole = (usdcBalanceUnits / 1000000n).toString();
       const frac = (usdcBalanceUnits % 1000000n).toString().padStart(6,'0').replace(/0+$/,'');
-      setBal(`USDC残高: ${frac ? `${whole}.${frac}` : whole}`);
+      const chainTxt = lastChainId ? ` / chainId: ${lastChainId}` : '';
+      const errTxt = lastBalErr ? ` / balErr: ${lastBalErr}` : '';
+      setBal(`USDC残高: ${frac ? `${whole}.${frac}` : whole}${chainTxt}${errTxt}`);
     }
   }
 
@@ -218,23 +220,36 @@ async function main(){
     }
   }
 
+  let lastChainId = null;
+  let lastBalErr = null;
+
   async function updateUsdcBalance(){
     if (!connectedAddress || !browserProvider) {
       usdcBalanceUnits = 0n;
+      lastBalErr = null;
+      lastChainId = null;
       refresh();
       return;
     }
     try {
-      const usdc = new ethers.Contract(USDC, ERC20_ABI, browserProvider);
-      // decimals should be 6 but read anyway
-      usdcDecimals = Number(await usdc.decimals());
-      if (usdcDecimals !== 6) {
-        // our parser assumes 6; keep display but note mismatch
-        // (we still use 6-decimal units conversion for input)
+      // Ensure we're on Base before reading balance
+      if (wcProvider) await ensureBaseWc(); else await ensureBaseInjected();
+
+      // Capture chainId for debugging
+      try {
+        if (wcProvider) lastChainId = await wcProvider.request({ method: 'eth_chainId' });
+        else lastChainId = await window.ethereum.request({ method: 'eth_chainId' });
+      } catch {
+        lastChainId = null;
       }
+
+      const usdc = new ethers.Contract(USDC, ERC20_ABI, browserProvider);
+      usdcDecimals = Number(await usdc.decimals());
       usdcBalanceUnits = await usdc.balanceOf(connectedAddress);
-    } catch {
+      lastBalErr = null;
+    } catch (e) {
       usdcBalanceUnits = 0n;
+      lastBalErr = e?.shortMessage || e?.message || String(e);
     }
     refresh();
   }
