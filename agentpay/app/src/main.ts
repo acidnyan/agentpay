@@ -111,7 +111,7 @@ async function main() {
         <div class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
       </div>
 
-      <div id="toast" class="pill" style="display:none; position:sticky; top:12px; z-index:5; margin-top:12px; justify-content:center; background:#0f1320"></div>
+      <div id="toast" class="pill" style="display:none; position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:9999; justify-content:center; background:#0f1320; max-width:90%; text-align:center"></div>
 
       <div id="panelPay" class="card">
         <div class="row">
@@ -276,7 +276,7 @@ async function main() {
       toastEl.style.display = 'none';
       toastEl.textContent = '';
       toastTimer = null;
-    }, 2000);
+    }, 2500);
   }
 
   function showOk(msg: string) {
@@ -657,7 +657,14 @@ async function main() {
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
     updateInvoiceButtons();
     toast('請求リンクを生成しました');
-    try { await navigator.clipboard.writeText(invoiceUrlEl.value); toast('請求リンクをコピーしました'); } catch {}
+    toast('コピー中…');
+    try {
+      await navigator.clipboard.writeText(invoiceUrlEl.value);
+      toast('請求リンクをコピーしました');
+    } catch {
+      showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
+      toast('コピー失敗');
+    }
   };
 
   amtFlexBtn.onclick = () => {
@@ -679,8 +686,14 @@ async function main() {
 
   copyInvoiceBtn.onclick = async () => {
     if (!invoiceUrlEl.value) return;
-    await navigator.clipboard.writeText(invoiceUrlEl.value);
-    toast('請求リンクをコピーしました');
+    toast('コピー中…');
+    try {
+      await navigator.clipboard.writeText(invoiceUrlEl.value);
+      toast('請求リンクをコピーしました');
+    } catch {
+      showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
+      toast('コピー失敗');
+    }
   };
 
   copyBtn.onclick = async () => {
@@ -688,13 +701,25 @@ async function main() {
     const amount = amountEl.value.trim();
     const memo = memoEl.value.trim();
     const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
-    await navigator.clipboard.writeText(text);
-    toast('コピーしました');
+    toast('コピー中…');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('コピーしました');
+    } catch (e) {
+      showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
+      toast('コピー失敗');
+    }
   };
 
   copyShareBtn.onclick = async () => {
-    await navigator.clipboard.writeText(shareEl.value);
-    toast('URLをコピーしました');
+    toast('コピー中…');
+    try {
+      await navigator.clipboard.writeText(shareEl.value);
+      toast('URLをコピーしました');
+    } catch {
+      showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
+      toast('コピー失敗');
+    }
   };
 
   toEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
