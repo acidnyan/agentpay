@@ -172,6 +172,17 @@ async function main() {
             <input id="invMemo" placeholder="task-123" />
           </div>
         </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="col">
+            <label>支払い側で金額を編集</label>
+            <div class="btns" style="margin-top:0">
+              <button id="amtFlex" type="button">OFF（固定）</button>
+            </div>
+            <div class="small">ONにすると、受け取った人がamountを変更できます（to/memoは固定）。</div>
+          </div>
+        </div>
+
         <div class="btns">
           <button id="gen" class="primary">請求リンク生成</button>
           <button id="lock">ロック: OFF</button>
@@ -226,6 +237,7 @@ async function main() {
   const lockBtn = $('lock') as HTMLButtonElement;
   const applyBtn = $('apply') as HTMLButtonElement;
   const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
+  const amtFlexBtn = $('amtFlex') as HTMLButtonElement;
 
   const connectBtn = $('connect') as HTMLButtonElement;
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
@@ -365,19 +377,25 @@ async function main() {
   }
 
   let invoiceLocked = false;
+  let flexAmount = false;
 
   function setLockUI() {
     lockBtn.textContent = `ロック: ${invoiceLocked ? 'ON' : 'OFF'}`;
-    // Lock payment form inputs
+    // Lock payment form inputs; allow amount edit if flexAmount=true
     toEl.readOnly = invoiceLocked;
-    amountEl.readOnly = invoiceLocked;
+    amountEl.readOnly = invoiceLocked && !flexAmount;
     memoEl.readOnly = invoiceLocked;
+
+    amtFlexBtn.textContent = flexAmount ? 'ON（任意金額）' : 'OFF（固定）';
   }
 
   function buildInvoiceUrl(to: string, amount: string, memo: string): string {
     const u = new URL(location.href);
     u.searchParams.set('tab', 'pay');
     u.searchParams.set('lock', '1');
+    if (flexAmount) u.searchParams.set('flexAmount', '1');
+    else u.searchParams.delete('flexAmount');
+
     u.searchParams.set('to', to);
     u.searchParams.set('amount', amount);
     if (memo) u.searchParams.set('memo', memo);
@@ -582,6 +600,7 @@ async function main() {
 
     // Lock via URL param
     invoiceLocked = p.get('lock') === '1';
+    flexAmount = p.get('flexAmount') === '1';
 
     toEl.value = defTo;
     amountEl.value = defAmount;
@@ -617,6 +636,11 @@ async function main() {
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
     showOk('請求リンクを生成しました。');
     try { await navigator.clipboard.writeText(invoiceUrlEl.value); setMsg('請求リンクをコピーしました。'); } catch {}
+  };
+
+  amtFlexBtn.onclick = () => {
+    flexAmount = !flexAmount;
+    setLockUI();
   };
 
   lockBtn.onclick = () => {
