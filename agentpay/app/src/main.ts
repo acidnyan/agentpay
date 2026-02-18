@@ -105,8 +105,8 @@ async function main() {
 
       <div class="card">
         <div class="btns" style="margin-top:0">
-          <button id="tabPay" class="primary">支払い</button>
-          <button id="tabCreate">請求作成</button>
+          <button id="tabPay" type="button" class="primary">支払い</button>
+          <button id="tabCreate" type="button">請求作成</button>
         </div>
         <div class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
       </div>
@@ -242,6 +242,10 @@ async function main() {
     panelCreate.style.display = payOn ? 'none' : 'block';
     tabPayBtn.classList.toggle('primary', payOn);
     tabCreateBtn.classList.toggle('primary', !payOn);
+    // Keep URL in sync (no reload)
+    const u = new URL(location.href);
+    u.searchParams.set('tab', tab);
+    history.replaceState(null, '', u.toString());
   }
 
   function showErr(msg: string) {
@@ -591,8 +595,8 @@ async function main() {
     setPill();
   }
 
-  tabPayBtn.onclick = () => setTab('pay');
-  tabCreateBtn.onclick = () => setTab('create');
+  tabPayBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTab('pay'); setMsg('tab: pay'); });
+  tabCreateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTab('create'); setMsg('tab: create'); });
 
   connectBtn.onclick = () => void connect().catch((e) => showErr(e?.message || String(e)));
   disconnectBtn.onclick = () => void disconnect();
