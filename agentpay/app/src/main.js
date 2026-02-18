@@ -333,16 +333,17 @@ async function main(){
         hash = await wcProvider.request({ method: 'eth_sendTransaction', params: [txParams] });
       } else if (window.ethereum?.request) {
         hash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [txParams] });
+      } else {
+        throw new Error('No wallet provider available for sending transaction');
       }
 
-      if (!hash) {
-        // Fallback: ethers signer
-        const tx = await signer.sendTransaction(txParams);
-        hash = tx.hash;
+      if (!hash || typeof hash !== 'string') {
+        // Do not fall back to ethers sendTransaction; some injected providers break nonce population.
+        throw new Error('Wallet did not return a transaction hash (eth_sendTransaction failed or was blocked). Try approving in the wallet, or use WalletConnect.');
       }
 
       setMsg(`送信しました。承認待ち… (${hash.slice(0,10)}…)`);
-      const rc = await browserProvider.waitForTransaction(hash);
+      await browserProvider.waitForTransaction(hash);
       showOk(`支払い完了: ${hash}`);
       setMsg('');
       await updateUsdcBalance();
