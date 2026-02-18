@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AgentPay — Base USDC Invoice</title>
+  <style>
+    :root{--bg:#0b0d10;--card:#141821;--fg:#e8eef7;--muted:#9aa7b5;--accent:#5eead4;--danger:#fb7185;}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",Helvetica,Arial; background:var(--bg); color:var(--fg);}
+    .wrap{max-width:720px;margin:0 auto;padding:24px;}
+    .h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+    h1{font-size:28px;margin:0;}
+    .tag{font-size:12px;color:var(--muted);border:1px solid #273142;padding:3px 8px;border-radius:999px;}
+    .card{background:var(--card);border:1px solid #273142;border-radius:14px;padding:16px;margin-top:16px;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+    input{width:100%;box-sizing:border-box;background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:10px 12px;font-size:14px;}
+    .col{flex:1;min-width:220px;}
+    .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+    button,a.btn{cursor:pointer;background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:12px;padding:10px 12px;font-size:14px;text-decoration:none;display:inline-flex;align-items:center;gap:8px;}
+    button.primary,a.btn.primary{border-color:rgba(94,234,212,.45);box-shadow:0 0 0 1px rgba(94,234,212,.12) inset;}
+    button:disabled{opacity:.55;cursor:not-allowed;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+    .muted{color:var(--muted);font-size:13px;line-height:1.5;}
+    .warn{color:var(--danger);font-size:13px;}
+    .small{font-size:12px;color:var(--muted);}
+    .sep{height:1px;background:#273142;margin:14px 0;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="h">
+      <h1>AgentPay</h1>
+      <div class="tag">Base USDC invoice link</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="col">
+          <label>支払い先 (to)</label>
+          <input id="to" class="mono" placeholder="0x..." />
+        </div>
+        <div class="col">
+          <label>金額 (USDC)</label>
+          <input id="amount" class="mono" placeholder="10" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="col" style="min-width:100%">
+          <label>メモ (任意)</label>
+          <input id="memo" placeholder="task-123" />
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="copy" class="primary">コピー（宛先/金額/メモ）</button>
+        <a id="walletLink" class="btn primary" target="_blank" rel="noreferrer">ウォレットで開く</a>
+        <a id="basescan" class="btn" target="_blank" rel="noreferrer">BaseScanで見る</a>
+      </div>
+      <div id="err" class="warn" style="margin-top:10px;display:none"></div>
+
+      <div class="sep"></div>
+
+      <div class="muted">
+        このリンクは <span class="mono">Base</span> 上の <span class="mono">USDC</span> 支払い用です（資金を預かりません）。
+        送金は不可逆なので、宛先と金額を確認してから実行してください。
+      </div>
+      <div class="small" style="margin-top:10px">
+        USDC contract (Base): <span class="mono" id="usdc"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">共有用リンク（このページのURL）</div>
+      <div class="row">
+        <input id="share" class="mono" readonly />
+        <button id="copyShare">URLコピー</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+  const CHAIN_ID = 8453; // Base
+
+  const $ = (id) => document.getElementById(id);
+  const toEl = $('to');
+  const amountEl = $('amount');
+  const memoEl = $('memo');
+  const errEl = $('err');
+  const walletLink = $('walletLink');
+  const basescan = $('basescan');
+  const share = $('share');
+
+  $('usdc').textContent = USDC;
+
+  function showErr(msg){
+    errEl.style.display = msg ? 'block' : 'none';
+    errEl.textContent = msg || '';
+  }
+
+  function qp(){
+    const u = new URL(location.href);
+    return u.searchParams;
+  }
+
+  function isHexAddress(a){
+    return /^0x[0-9a-fA-F]{40}$/.test(a);
+  }
+
+  // Convert USDC decimal string to integer (6 decimals)
+  function usdcToUnits(str){
+    const s = (str||'').trim();
+    if(!s) return null;
+    if(!/^\d+(\.\d+)?$/.test(s)) return null;
+    const [i, f=''] = s.split('.');
+    if(f.length > 6) return null;
+    const frac = (f + '000000').slice(0,6);
+    // BigInt from string
+    return BigInt(i) * 1000000n + BigInt(frac);
+  }
+
+  function buildEip681(to, amountUnits){
+    // ERC-20 transfer via EIP-681
+    // ethereum:contract@chain/transfer?address=TO&uint256=AMOUNT
+    return `ethereum:${USDC}@${CHAIN_ID}/transfer?address=${encodeURIComponent(to)}&uint256=${amountUnits.toString()}`;
+  }
+
+  function buildShareUrl(to, amount, memo){
+    const u = new URL(location.href);
+    u.searchParams.set('to', to);
+    u.searchParams.set('amount', amount);
+    if (memo) u.searchParams.set('memo', memo);
+    else u.searchParams.delete('memo');
+    return u.toString();
+  }
+
+  function refresh(){
+    const to = toEl.value.trim();
+    const amount = amountEl.value.trim();
+    const memo = memoEl.value.trim();
+
+    showErr('');
+
+    basescan.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
+
+    const units = usdcToUnits(amount);
+    if (!isHexAddress(to)) {
+      walletLink.href = '#';
+      walletLink.setAttribute('aria-disabled','true');
+      walletLink.classList.remove('primary');
+      showErr('宛先アドレス(to)が正しくありません。');
+    } else if (units === null) {
+      walletLink.href = '#';
+      walletLink.setAttribute('aria-disabled','true');
+      walletLink.classList.remove('primary');
+      showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
+    } else {
+      walletLink.href = buildEip681(to, units);
+      walletLink.removeAttribute('aria-disabled');
+      walletLink.classList.add('primary');
+    }
+
+    share.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
+  }
+
+  function init(){
+    const p = qp();
+    const defTo = p.get('to') || '0x9f9dfBc8FD1263A914E62F8329BB4FA94F842aBe';
+    const defAmount = p.get('amount') || '';
+    const defMemo = p.get('memo') || '';
+
+    toEl.value = defTo;
+    amountEl.value = defAmount;
+    memoEl.value = defMemo;
+
+    refresh();
+  }
+
+  $('copy').addEventListener('click', async () => {
+    const to = toEl.value.trim();
+    const amount = amountEl.value.trim();
+    const memo = memoEl.value.trim();
+    const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
+    await navigator.clipboard.writeText(text);
+  });
+
+  $('copyShare').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(share.value);
+  });
+
+  toEl.addEventListener('input', refresh);
+  amountEl.addEventListener('input', refresh);
+  memoEl.addEventListener('input', refresh);
+
+  init();
+</script>
+</body>
+</html>
