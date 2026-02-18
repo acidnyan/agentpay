@@ -192,15 +192,21 @@ async function main(){
     if (!window.__agentpay_last_tx) {
       setTxHtml('');
     } else {
-      const { hash, memo: m } = window.__agentpay_last_tx;
+      const { hash, memo: m, status } = window.__agentpay_last_tx;
       const url = `https://basescan.org/tx/${hash}`;
       const memoLine = m ? `<br/>memo: <span class="mono">${m}</span>` : '';
-      setTxHtml(`Tx: <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${url}">${hash.slice(0,10)}…</a>${memoLine} <button id="copyTx" style="padding:4px 8px">tx+memoコピー</button>`);
+      const st = status ? `<span class="pill" style="margin-left:8px">${status}</span>` : '';
+      setTxHtml(`Tx: <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${url}">${hash.slice(0,10)}…</a>${st}${memoLine} <button id="copyTx" style="padding:4px 8px">tx+memoコピー</button> <button id="clearTx" style="padding:4px 8px">クリア</button>`);
       setTimeout(() => {
         const b = document.getElementById('copyTx');
         if (b) b.onclick = async () => {
           const text = `tx: ${hash}${m ? `\nmemo: ${m}` : ''}`;
           try { await navigator.clipboard.writeText(text); } catch {}
+        };
+        const c = document.getElementById('clearTx');
+        if (c) c.onclick = () => {
+          window.__agentpay_last_tx = null;
+          refresh();
         };
       }, 0);
     }
@@ -357,14 +363,17 @@ async function main(){
         throw new Error('Wallet did not return a transaction hash (eth_sendTransaction failed or was blocked).');
       }
 
-      // Store last tx for UI display/copy
-      window.__agentpay_last_tx = { hash, memo };
+      // Store last tx for UI display/copy (persist on screen until user clears)
+      window.__agentpay_last_tx = { hash, memo, status: 'submitted' };
       refresh();
 
       showOk(`Tx submitted: ${hash}`);
       setMsg('承認・送信しました。confirm待ち…');
 
       await browserProvider.waitForTransaction(hash);
+
+      window.__agentpay_last_tx.status = 'confirmed';
+      refresh();
 
       showOk(`支払い完了: ${hash}`);
       setMsg('confirmed');
