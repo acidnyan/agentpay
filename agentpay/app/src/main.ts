@@ -154,8 +154,6 @@ async function main() {
         </div>
       </div>
 
-      </div>
-
       <div id="panelCreate" class="card" style="display:none">
         <div class="muted" style="margin-bottom:8px">請求作成（Invoice Creator）</div>
         <div class="row">
