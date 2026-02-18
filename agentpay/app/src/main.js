@@ -312,22 +312,18 @@ async function main(){
     if(!isHexAddress(to)) return showErr('宛先(to)が不正です。');
     if(units===null) return showErr('金額が不正です。');
     if(usdcBalanceUnits < units) return showErr('USDC残高が不足しています。');
+    if(to.toLowerCase() === connectedAddress.toLowerCase()) {
+      showErr('注意: 宛先(to)が送金元と同じアドレスです（テスト用途ならOK）。');
+    }
 
     setMsg('トランザクション作成中…');
     try{
       if(wcProvider) await ensureBaseWc(); else await ensureBaseInjected();
 
-      // Build ERC-20 transfer calldata
       const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
       const data = iface.encodeFunctionData('transfer', [to, units]);
-      const txParams = {
-        from: connectedAddress,
-        to: USDC,
-        data,
-        value: '0x0',
-      };
+      const txParams = { from: connectedAddress, to: USDC, data, value: '0x0' };
 
-      // Prefer raw eth_sendTransaction to avoid provider/ethers nonce quirks
       let hash = null;
       if (wcProvider) {
         hash = await wcProvider.request({ method: 'eth_sendTransaction', params: [txParams] });
@@ -338,16 +334,22 @@ async function main(){
       }
 
       if (!hash || typeof hash !== 'string') {
-        // Do not fall back to ethers sendTransaction; some injected providers break nonce population.
-        throw new Error('Wallet did not return a transaction hash (eth_sendTransaction failed or was blocked). Try approving in the wallet, or use WalletConnect.');
+        throw new Error('Wallet did not return a transaction hash (eth_sendTransaction failed or was blocked).');
       }
 
-      setMsg(`送信しました。承認待ち… (${hash.slice(0,10)}…)`);
+      const txUrl = `https://basescan.org/tx/${hash}`;
+      showOk(`Tx submitted: ${hash}`);
+      setMsg(`BaseScan: ${txUrl}`);
+
       await browserProvider.waitForTransaction(hash);
+
       showOk(`支払い完了: ${hash}`);
-      setMsg('');
+      setMsg(`BaseScan: ${txUrl}`);
       await updateUsdcBalance();
-      if(memo){ try{ await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${hash}`);}catch{} }
+
+      if(memo){
+        try { await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${hash}`); } catch {}
+      }
     } catch(e){
       showErr(e?.shortMessage || e?.message || String(e));
       setMsg('');
