@@ -226,6 +226,49 @@
     showOk('');
     setMsg('ウォレット接続中…');
 
+    // Prefer injected provider (MetaMask / Coinbase Wallet in-app browser)
+    if (window.ethereum) {
+      try {
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        browserProvider = new ethers.BrowserProvider(window.ethereum);
+        signer = await browserProvider.getSigner();
+        connectedAddress = await signer.getAddress();
+
+        // Try to keep on Base
+        try {
+          await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+        } catch (e) {
+          if (e?.code === 4902) {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: CHAIN_ID_HEX,
+                chainName: 'Base',
+                nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                rpcUrls: ['https://mainnet.base.org'],
+                blockExplorerUrls: ['https://basescan.org']
+              }]
+            });
+          }
+        }
+
+        // Listen for account changes
+        window.ethereum.on?.('accountsChanged', (accounts) => {
+          connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
+          setPill();
+          refresh();
+        });
+
+        setPill();
+        setMsg('接続しました（Injected Wallet）。');
+        refresh();
+        return;
+      } catch (e) {
+        // fall back to WalletConnect
+      }
+    }
+
+    // WalletConnect fallback
     wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
       chains: [CHAIN_ID],
@@ -236,22 +279,19 @@
       metadata: {
         name: 'AgentPay',
         description: 'Base USDC invoice link',
-        url: location.origin,
-        icons: ['https://acidnyan.github.io/agentpay/favicon.ico']
+        url: location.href,
+        icons: []
       }
     });
 
     await wcProvider.connect();
 
-    // Wrap with ethers
     browserProvider = new ethers.BrowserProvider(wcProvider);
     signer = await browserProvider.getSigner();
     connectedAddress = await signer.getAddress();
 
-    // Keep on Base
     await ensureBaseChain();
 
-    // Events
     wcProvider.on('accountsChanged', async (accounts) => {
       connectedAddress = (accounts && accounts[0]) ? accounts[0] : null;
       setPill();
@@ -268,7 +308,7 @@
     });
 
     setPill();
-    setMsg('接続しました。');
+    setMsg('接続しました（WalletConnect）。');
     refresh();
   }
 
