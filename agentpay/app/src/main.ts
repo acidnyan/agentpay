@@ -111,6 +111,8 @@ async function main() {
         <div class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
       </div>
 
+      <div id="toast" class="pill" style="display:none; position:sticky; top:12px; z-index:5; margin-top:12px; justify-content:center; background:#0f1320"></div>
+
       <div id="panelPay" class="card">
         <div class="row">
           <div class="col">
@@ -211,6 +213,7 @@ async function main() {
 
   const tabPayBtn = $('tabPay') as HTMLButtonElement;
   const tabCreateBtn = $('tabCreate') as HTMLButtonElement;
+  const toastEl = $('toast')!;
   const panelPay = $('panelPay')!;
   const panelCreate = $('panelCreate')!;
 
@@ -264,6 +267,18 @@ async function main() {
     errEl.style.display = msg ? 'block' : 'none';
     errEl.textContent = msg || '';
   }
+  let toastTimer: number | null = null;
+  function toast(msg: string) {
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastEl.style.display = msg ? 'inline-flex' : 'none';
+    toastEl.textContent = msg || '';
+    if (msg) toastTimer = window.setTimeout(() => {
+      toastEl.style.display = 'none';
+      toastEl.textContent = '';
+      toastTimer = null;
+    }, 2000);
+  }
+
   function showOk(msg: string) {
     okEl.style.display = msg ? 'block' : 'none';
     okEl.textContent = msg || '';
@@ -641,8 +656,8 @@ async function main() {
     if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
     updateInvoiceButtons();
-    showOk('請求リンクを生成しました。');
-    try { await navigator.clipboard.writeText(invoiceUrlEl.value); setMsg('請求リンクをコピーしました。'); } catch {}
+    toast('請求リンクを生成しました');
+    try { await navigator.clipboard.writeText(invoiceUrlEl.value); toast('請求リンクをコピーしました'); } catch {}
   };
 
   amtFlexBtn.onclick = () => {
@@ -665,7 +680,7 @@ async function main() {
   copyInvoiceBtn.onclick = async () => {
     if (!invoiceUrlEl.value) return;
     await navigator.clipboard.writeText(invoiceUrlEl.value);
-    showOk('請求リンクをコピーしました。');
+    toast('請求リンクをコピーしました');
   };
 
   copyBtn.onclick = async () => {
@@ -674,10 +689,12 @@ async function main() {
     const memo = memoEl.value.trim();
     const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
     await navigator.clipboard.writeText(text);
+    toast('コピーしました');
   };
 
   copyShareBtn.onclick = async () => {
     await navigator.clipboard.writeText(shareEl.value);
+    toast('URLをコピーしました');
   };
 
   toEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
