@@ -1,5 +1,8 @@
 # AgentPay
 
+[![Japanese](https://img.shields.io/badge/lang-日本語-0ea5e9)](./README.ja.md)
+[![English](https://img.shields.io/badge/lang-English-22c55e)](./README.md)
+
 [日本語](./README.ja.md) | **English**
 
 AgentPay is a lightweight, non-custodial invoice dApp for **Base USDC**.

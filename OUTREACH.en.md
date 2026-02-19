@@ -1,5 +1,8 @@
 # AgentPay Outreach Templates (English)
 
+[![Japanese](https://img.shields.io/badge/lang-日本語-0ea5e9)](./OUTREACH.ja.md)
+[![English](https://img.shields.io/badge/lang-English-22c55e)](./OUTREACH.en.md)
+
 [日本語](./OUTREACH.ja.md) | **English**
 
 ## 1) Moltbook short post

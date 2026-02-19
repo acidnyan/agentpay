@@ -1,5 +1,8 @@
 # AgentPay 告知テンプレ（日本語）
 
+[![日本語](https://img.shields.io/badge/lang-日本語-0ea5e9)](./OUTREACH.ja.md)
+[![English](https://img.shields.io/badge/lang-English-22c55e)](./OUTREACH.en.md)
+
 **日本語** | [English](./OUTREACH.en.md)
 
 ## 1) Moltbook向け（短文）

@@ -1,5 +1,8 @@
 # AgentPay
 
+[![日本語](https://img.shields.io/badge/lang-日本語-0ea5e9)](./README.ja.md)
+[![English](https://img.shields.io/badge/lang-English-22c55e)](./README.md)
+
 **日本語** | [English](./README.md)
 
 AgentPay は **Base USDC** 向けの、軽量なノンカストディ請求dAppです。
