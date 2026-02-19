@@ -320,10 +320,12 @@ async function main() {
 
         <div class="btns">
           <button id="gen" class="primary">請求リンク生成</button>
+          <button id="signInvoice">請求内容に署名</button>
           <button id="compact">短縮URL: ON</button>
           <button id="lock">ロック: OFF</button>
           <button id="apply">この請求をフォームに反映</button>
         </div>
+        <div id="signState" class="small" style="margin-top:6px"></div>
         <div class="row" style="margin-top:8px">
           <div class="col" style="min-width:220px">
             <label id="lblTplName">テンプレ名</label>
@@ -426,6 +428,8 @@ async function main() {
   const recentInvoicesTitleEl = $('recentInvoicesTitle')!;
   const recentInvoicesEl = $('recentInvoices')!;
   const genBtn = $('gen') as HTMLButtonElement;
+  const signInvoiceBtn = $('signInvoice') as HTMLButtonElement;
+  const signStateEl = $('signState')!;
   const compactBtn = $('compact') as HTMLButtonElement;
   const lockBtn = $('lock') as HTMLButtonElement;
   const applyBtn = $('apply') as HTMLButtonElement;
@@ -457,6 +461,8 @@ async function main() {
   let invoiceContextChain: keyof typeof CHAIN_CONFIGS | null = null;
   let hasInvoiceContext = false;
   let invoiceSigMismatch = false;
+  let signedByIssuer: string | null = null;
+  let signedProof: string | null = null;
   let payPanelInitialized = false;
   let createPanelInitialized = false;
 
@@ -472,7 +478,7 @@ async function main() {
       verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する', verifyCopy: '検証結果コピー',
       createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
       lblFlex: '支払い側で金額を編集', flexHint: 'ONで金額のみ編集可（宛先/メモは固定）。',
-      gen: '請求リンク生成', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く', exportCsv: 'CSV出力',
+      gen: '請求リンク生成', signInvoice: '請求内容に署名', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く', exportCsv: 'CSV出力',
       pageUrlTitle: 'ページURL（このページのトップ）', pageUrlHint: 'パラメータ無しのURL。案内・ブックマーク用。',
       shareUrlTitle: '共有用リンク（現在のURL / パラメータ付き）', shareUrlHint: '請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。',
       modeFixed: 'モード: 固定金額（amount編集不可）', modeFlex: 'モード: 任意金額（amount編集可 / to,memo固定）',
@@ -537,7 +543,7 @@ async function main() {
       verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify', verifyCopy: 'Copy verification',
       createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
       lblFlex: 'Allow payer to edit amount', flexHint: 'When ON, only amount is editable (to/memo locked).',
-      gen: 'Generate Invoice Link', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open', exportCsv: 'Export CSV',
+      gen: 'Generate Invoice Link', signInvoice: 'Sign invoice payload', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open', exportCsv: 'Export CSV',
       pageUrlTitle: 'Page URL (top page)', pageUrlHint: 'URL without parameters. For guide/bookmark.',
       shareUrlTitle: 'Share URL (current URL with parameters)', shareUrlHint: 'For payment requests, prefer generated invoice URL above.',
       modeFixed: 'Mode: fixed amount (amount locked)', modeFlex: 'Mode: flexible amount (amount editable / to,memo locked)',
@@ -645,6 +651,7 @@ async function main() {
     verifyBtn.textContent = tr('verifyBtn');
     copyVerifyBtn.textContent = tr('verifyCopy');
     genBtn.textContent = tr('gen');
+    signInvoiceBtn.textContent = tr('signInvoice');
     applyBtn.textContent = tr('apply');
     tplSaveBtn.textContent = tr('tplSave');
     tplLoadBtn.textContent = tr('tplLoad');
@@ -674,6 +681,7 @@ async function main() {
 
     usdcContractLineEl.innerHTML = `USDC contract (${chainCfg().label}): <span class="mono">${chainCfg().usdc}</span>`;
     chainSelEl.value = currentChain;
+    refreshSignState();
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -857,8 +865,8 @@ async function main() {
   let compactMode = true;
   let invoiceExpTs: number | null = null;
 
-  function makeInvoiceSig(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
-    const canonical = JSON.stringify({
+  function invoiceCanonical(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+    return JSON.stringify({
       c: payload.chain,
       t: (payload.to || '').toLowerCase(),
       a: String(payload.amount || ''),
@@ -868,7 +876,14 @@ async function main() {
       l: Number(payload.lock || 0),
       f: Number(payload.flex || 0),
     });
-    return ethers.keccak256(ethers.toUtf8Bytes(canonical));
+  }
+
+  function makeInvoiceSig(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+    return ethers.keccak256(ethers.toUtf8Bytes(invoiceCanonical(payload)));
+  }
+
+  function invoiceSignMessage(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+    return `AgentPay Invoice\n${invoiceCanonical(payload)}`;
   }
 
   function encodeCompact(payload: object): string {
@@ -1061,6 +1076,22 @@ async function main() {
     if (selected) tplSelectEl.value = selected;
   }
 
+  function refreshSignState() {
+    if (signedByIssuer) {
+      signStateEl.textContent = lang === 'ja'
+        ? `署名済み: ${signedByIssuer.slice(0, 6)}…${signedByIssuer.slice(-4)}`
+        : `Signed by: ${signedByIssuer.slice(0, 6)}…${signedByIssuer.slice(-4)}`;
+    } else {
+      signStateEl.textContent = lang === 'ja' ? '未署名（任意）' : 'Unsigned (optional)';
+    }
+  }
+
+  function clearSignedProof() {
+    signedByIssuer = null;
+    signedProof = null;
+    refreshSignState();
+  }
+
   function setLockUI() {
     lockBtn.textContent = invoiceLocked ? tr('lockOn') : tr('lockOff');
     // Lock payment form inputs; allow amount edit if flexAmount=true
@@ -1095,6 +1126,10 @@ async function main() {
       const packed = encodeCompact({ t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
       u.searchParams.set('d', packed);
       u.searchParams.set('sig', sig);
+      if (signedByIssuer && signedProof) {
+        u.searchParams.set('issuer', signedByIssuer);
+        u.searchParams.set('psig', signedProof);
+      }
       return u.toString();
     }
 
@@ -1113,6 +1148,10 @@ async function main() {
     else u.searchParams.delete('exp');
 
     u.searchParams.set('sig', sig);
+    if (signedByIssuer && signedProof) {
+      u.searchParams.set('issuer', signedByIssuer);
+      u.searchParams.set('psig', signedProof);
+    }
     return u.toString();
   }
 
@@ -1479,6 +1518,8 @@ async function main() {
 
     const dParam = p.get('d');
     const sigParam = p.get('sig') || '';
+    const issuerParam = p.get('issuer') || '';
+    const psigParam = p.get('psig') || '';
     hasInvoiceContext = !!(dParam || p.get('to') || p.get('amount'));
     invoiceContextChain = (chainParam === 'eth' || chainParam === 'base') ? chainParam : null;
     const unpacked = dParam ? decodeCompact(dParam) : null;
@@ -1499,8 +1540,11 @@ async function main() {
     flexAmount = unpacked ? !!unpacked.f : p.get('flexAmount') === '1';
     invoiceExpTs = expParam && /^\d+$/.test(expParam) ? Number(expParam) : null;
 
+    signedByIssuer = issuerParam || null;
+    signedProof = psigParam || null;
+
     if (hasInvoiceContext && invoiceContextChain && sigParam) {
-      const expectedSig = makeInvoiceSig({
+      const payload = {
         chain: invoiceContextChain,
         to: defTo,
         amount: defAmount,
@@ -1509,8 +1553,18 @@ async function main() {
         exp: invoiceExpTs ? Math.floor(invoiceExpTs) : 0,
         lock: invoiceLocked ? 1 : 0,
         flex: flexAmount ? 1 : 0,
-      });
+      };
+      const expectedSig = makeInvoiceSig(payload);
       invoiceSigMismatch = expectedSig.toLowerCase() !== sigParam.toLowerCase();
+
+      if (!invoiceSigMismatch && issuerParam && psigParam) {
+        try {
+          const recovered = ethers.verifyMessage(invoiceSignMessage(payload), psigParam);
+          invoiceSigMismatch = recovered.toLowerCase() !== issuerParam.toLowerCase();
+        } catch {
+          invoiceSigMismatch = true;
+        }
+      }
     } else {
       invoiceSigMismatch = false;
     }
@@ -1558,6 +1612,7 @@ async function main() {
 
   function switchChain(next: keyof typeof CHAIN_CONFIGS) {
     currentChain = next;
+    clearSignedProof();
     const u = new URL(location.href);
     u.searchParams.set('chain', next);
     history.replaceState(null, '', u.toString());
@@ -1596,6 +1651,34 @@ async function main() {
     openInvoiceEl.href = has ? invoiceUrlEl.value : '#';
   }
 
+  signInvoiceBtn.onclick = async () => {
+    if (!signer || !connectedAddress) {
+      showErr(lang === 'ja' ? '先にウォレット接続してください。' : 'Please connect wallet first.');
+      return;
+    }
+    const to = invToEl.value.trim();
+    const amount = invAmountEl.value.trim();
+    const memo = invMemoEl.value.trim();
+    const invoiceId = invInvoiceIdEl.value.trim();
+    const expMinRaw = invExpMinEl.value.trim();
+    const expMin = expMinRaw ? Number(expMinRaw) : 0;
+    if (!isHexAddress(to)) return showErr(lang === 'ja' ? '署名前に to を正しく入力してください。' : 'Please enter valid recipient before signing.');
+    if (usdcToUnits(amount) === null) return showErr(lang === 'ja' ? '署名前に amount を正しく入力してください。' : 'Please enter valid amount before signing.');
+
+    const expTs = expMin > 0 ? Math.floor(Date.now() / 1000) + Math.floor(expMin * 60) : 0;
+    const payload = { chain: chainCfg().key, to, amount, memo, invoiceId, exp: expTs, lock: 1, flex: flexAmount ? 1 : 0 };
+    try {
+      const message = invoiceSignMessage(payload);
+      const proof = await signer.signMessage(message);
+      signedByIssuer = connectedAddress;
+      signedProof = proof;
+      refreshSignState();
+      toast(lang === 'ja' ? '請求内容に署名しました' : 'Invoice payload signed');
+    } catch (e: any) {
+      showErr(e?.message || String(e));
+    }
+  };
+
   genBtn.onclick = async () => {
     const to = invToEl.value.trim();
     const amount = invAmountEl.value.trim();
@@ -1625,6 +1708,7 @@ async function main() {
 
   amtFlexBtn.onclick = () => {
     flexAmount = !flexAmount;
+    clearSignedProof();
     setLockUI();
   };
 
@@ -1677,6 +1761,7 @@ async function main() {
     const name = tplSelectEl.value;
     const t = loadTemplates().find((x) => x.name === name);
     if (!t) return;
+    clearSignedProof();
     tplNameEl.value = t.name;
     invToEl.value = t.to || '';
     invAmountEl.value = t.amount || '';
@@ -1807,6 +1892,10 @@ async function main() {
   amountEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
   memoEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
   invoiceIdEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
+
+  [invToEl, invAmountEl, invMemoEl, invInvoiceIdEl, invExpMinEl].forEach((el) => {
+    el.addEventListener('input', () => clearSignedProof());
+  });
 
   init();
 }
