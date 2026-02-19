@@ -263,7 +263,7 @@ async function main() {
           <button id="copyInvoice">URLコピー</button>
           <a id="openInvoice" class="btn" target="_blank" rel="noreferrer">開く</a>
         </div>
-        <div class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
+        <div id="lockHint" class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
       </div>
 
       <div class="card">
@@ -385,6 +385,13 @@ async function main() {
       sortInvoiceIdDesc: 'invoiceId (降順)',
       sortTimeDesc: '日時 (新しい順)',
       sortTimeAsc: '日時 (古い順)',
+      lockOn: 'ロック: ON',
+      lockOff: 'ロック: OFF',
+      compactOn: '短縮URL: ON',
+      compactOff: '短縮URL: OFF',
+      flexOn: 'ON（任意金額）',
+      flexOff: 'OFF（固定）',
+      lockHint: 'ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -419,6 +426,13 @@ async function main() {
       sortInvoiceIdDesc: 'invoiceId (Z→A)',
       sortTimeDesc: 'time (new→old)',
       sortTimeAsc: 'time (old→new)',
+      lockOn: 'Lock: ON',
+      lockOff: 'Lock: OFF',
+      compactOn: 'Short URL: ON',
+      compactOff: 'Short URL: OFF',
+      flexOn: 'ON (flexible)',
+      flexOff: 'OFF (fixed)',
+      lockHint: 'Lock mode prevents editing payment form fields to reduce mistakes (if flexible amount is ON, only amount is editable).',
     }
   } as const;
 
@@ -439,7 +453,7 @@ async function main() {
       invoiceGeneratedLabel: lang === 'ja' ? '生成された請求リンク' : 'Generated invoice link',
       pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
       footer1: tr('footer1'), footer2: tr('footer2'),
-      lblCsvFrom: tr('lblCsvFrom'), lblCsvTo: tr('lblCsvTo'), lblCsvSort: tr('lblCsvSort'),
+      lblCsvFrom: tr('lblCsvFrom'), lblCsvTo: tr('lblCsvTo'), lblCsvSort: tr('lblCsvSort'), lockHint: tr('lockHint'),
     };
     Object.entries(textMap).forEach(([id, text]) => {
       const n = document.getElementById(id);
@@ -652,14 +666,14 @@ async function main() {
   }
 
   function setLockUI() {
-    lockBtn.textContent = `ロック: ${invoiceLocked ? 'ON' : 'OFF'}`;
+    lockBtn.textContent = invoiceLocked ? tr('lockOn') : tr('lockOff');
     // Lock payment form inputs; allow amount edit if flexAmount=true
     toEl.readOnly = invoiceLocked;
     amountEl.readOnly = invoiceLocked && !flexAmount;
     memoEl.readOnly = invoiceLocked;
 
-    amtFlexBtn.textContent = flexAmount ? 'ON（任意金額）' : 'OFF（固定）';
-    compactBtn.textContent = compactMode ? '短縮URL: ON' : '短縮URL: OFF';
+    amtFlexBtn.textContent = flexAmount ? tr('flexOn') : tr('flexOff');
+    compactBtn.textContent = compactMode ? tr('compactOn') : tr('compactOff');
     modeHintEl.textContent = flexAmount ? tr('modeFlex') : tr('modeFixed');
   }
 
