@@ -264,6 +264,11 @@ async function main() {
             </select>
           </div>
         </div>
+        <div class="btns" style="margin-top:8px">
+          <button id="csvPresetToday">今日</button>
+          <button id="csvPresetWeek">今週</button>
+          <button id="csvPresetMonth">今月</button>
+        </div>
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
         <div id="diag" class="small" style="margin-top:6px"></div>
@@ -471,6 +476,9 @@ async function main() {
   const csvFromEl = $('csvFrom') as HTMLInputElement;
   const csvToEl = $('csvTo') as HTMLInputElement;
   const csvSortEl = $('csvSort') as HTMLSelectElement;
+  const csvPresetTodayBtn = $('csvPresetToday') as HTMLButtonElement;
+  const csvPresetWeekBtn = $('csvPresetWeek') as HTMLButtonElement;
+  const csvPresetMonthBtn = $('csvPresetMonth') as HTMLButtonElement;
   const copyPageBtn = $('copyPage') as HTMLButtonElement;
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
 
@@ -523,6 +531,9 @@ async function main() {
       sortInvoiceIdDesc: 'invoiceId (降順)',
       sortTimeDesc: '日時 (新しい順)',
       sortTimeAsc: '日時 (古い順)',
+      csvPresetToday: '今日',
+      csvPresetWeek: '今週',
+      csvPresetMonth: '今月',
       lockOn: 'ロック: ON',
       lockOff: 'ロック: OFF',
       compactOn: '短縮URL: ON',
@@ -590,6 +601,9 @@ async function main() {
       sortInvoiceIdDesc: 'invoiceId (Z→A)',
       sortTimeDesc: 'time (new→old)',
       sortTimeAsc: 'time (old→new)',
+      csvPresetToday: 'Today',
+      csvPresetWeek: 'This week',
+      csvPresetMonth: 'This month',
       lockOn: 'Lock: ON',
       lockOff: 'Lock: OFF',
       compactOn: 'Short URL: ON',
@@ -702,6 +716,9 @@ async function main() {
       opts[2].text = tr('sortTimeDesc');
       opts[3].text = tr('sortTimeAsc');
     }
+    csvPresetTodayBtn.textContent = tr('csvPresetToday');
+    csvPresetWeekBtn.textContent = tr('csvPresetWeek');
+    csvPresetMonthBtn.textContent = tr('csvPresetMonth');
 
     if (createPanelInitialized) {
       const sel = tplSelectEl.value;
@@ -1913,6 +1930,31 @@ async function main() {
     }
   };
 
+  function toDateInputValue(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  function applyCsvPreset(kind: 'today' | 'week' | 'month') {
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let start = new Date(end);
+
+    if (kind === 'today') {
+      start = new Date(end);
+    } else if (kind === 'week') {
+      const day = (end.getDay() + 6) % 7; // Monday=0
+      start.setDate(end.getDate() - day);
+    } else if (kind === 'month') {
+      start = new Date(end.getFullYear(), end.getMonth(), 1);
+    }
+
+    csvFromEl.value = toDateInputValue(start);
+    csvToEl.value = toDateInputValue(end);
+  }
+
   exportCsvBtn.onclick = () => {
     let rows = loadPaymentHistory();
     if (!rows.length) {
@@ -1950,6 +1992,10 @@ async function main() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  csvPresetTodayBtn.onclick = () => applyCsvPreset('today');
+  csvPresetWeekBtn.onclick = () => applyCsvPreset('week');
+  csvPresetMonthBtn.onclick = () => applyCsvPreset('month');
 
   copyPageBtn.onclick = async () => {
     toast('コピー中…');
