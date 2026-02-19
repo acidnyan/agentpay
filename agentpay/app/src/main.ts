@@ -216,6 +216,7 @@ async function main() {
             <input id="invoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
+        <div id="chainWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="toChecksum" class="small" style="margin-top:4px"></div>
 
         <div class="btns">
@@ -390,6 +391,7 @@ async function main() {
   const amountEl = $('amount') as HTMLInputElement;
   const memoEl = $('memo') as HTMLInputElement;
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
+  const chainWarnEl = $('chainWarn')!;
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const diagEl = $('diag')!;
@@ -450,6 +452,8 @@ async function main() {
   let activeTab: Tab = 'pay';
   let lang: Lang = 'ja';
   let currentChain: keyof typeof CHAIN_CONFIGS = 'base';
+  let invoiceContextChain: keyof typeof CHAIN_CONFIGS | null = null;
+  let hasInvoiceContext = false;
   let payPanelInitialized = false;
   let createPanelInitialized = false;
 
@@ -512,6 +516,7 @@ async function main() {
       paySummaryTitle: '直近の支払いサマリー',
       paySummaryCopy: 'サマリーをコピー',
       noPaySummary: 'まだ支払いサマリーがありません。',
+      chainMismatchWarn: 'この請求リンクは {chain} 向けです。現在は {current} が選択されています。',
       diagTitle: '起動診断',
       diagWallet: 'ウォレットAPI',
       diagRpc: 'Base RPC',
@@ -575,6 +580,7 @@ async function main() {
       paySummaryTitle: 'Latest payment summary',
       paySummaryCopy: 'Copy summary',
       noPaySummary: 'No payment summary yet.',
+      chainMismatchWarn: 'This invoice link is for {chain}. Current selection is {current}.',
       diagTitle: 'Startup diagnostics',
       diagWallet: 'Wallet API',
       diagRpc: 'Base RPC',
@@ -1100,6 +1106,16 @@ async function main() {
     const units = usdcToUnits(amount);
     const valid = isHexAddress(to) && units !== null;
 
+    if (hasInvoiceContext && invoiceContextChain && invoiceContextChain !== currentChain) {
+      const tpl = tr('chainMismatchWarn');
+      const msg = tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label);
+      chainWarnEl.style.display = 'block';
+      chainWarnEl.textContent = msg;
+    } else {
+      chainWarnEl.style.display = 'none';
+      chainWarnEl.textContent = '';
+    }
+
     // Page URL (no params)
     pageUrlEl.value = `${location.origin}${location.pathname}`;
 
@@ -1414,6 +1430,8 @@ async function main() {
     if (chainParam === 'eth' || chainParam === 'base') currentChain = chainParam;
 
     const dParam = p.get('d');
+    hasInvoiceContext = !!(dParam || p.get('to') || p.get('amount'));
+    invoiceContextChain = (chainParam === 'eth' || chainParam === 'base') ? chainParam : null;
     const unpacked = dParam ? decodeCompact(dParam) : null;
 
     const defTo = unpacked?.t || p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
