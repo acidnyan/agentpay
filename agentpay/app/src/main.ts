@@ -10,7 +10,6 @@ const CHAIN_CONFIGS = {
     chainIdHex: '0x2105',
     rpcUrl: 'https://mainnet.base.org',
     explorer: 'https://basescan.org',
-    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   },
   eth: {
     key: 'eth',
@@ -19,7 +18,17 @@ const CHAIN_CONFIGS = {
     chainIdHex: '0x1',
     rpcUrl: 'https://ethereum-rpc.publicnode.com',
     explorer: 'https://etherscan.io',
-    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  },
+} as const;
+
+const TOKEN_CONFIGS = {
+  base: {
+    usdc: { key: 'usdc', symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
+    usdt: { key: 'usdt', symbol: 'USDT', address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', decimals: 6 },
+  },
+  eth: {
+    usdc: { key: 'usdc', symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+    usdt: { key: 'usdt', symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
   },
 } as const;
 
@@ -138,10 +147,11 @@ function usdcToUnits(str: string): bigint | null {
   return BigInt(i) * 1000000n + BigInt(frac);
 }
 
-function buildShareUrl(chainKey: string, to: string, amount: string, memo: string, invoiceId?: string): string {
+function buildShareUrl(chainKey: string, tokenKey: string, to: string, amount: string, memo: string, invoiceId?: string): string {
   const u = new URL(location.href);
   u.searchParams.delete('d');
   u.searchParams.set('chain', chainKey);
+  u.searchParams.set('token', tokenKey);
   u.searchParams.set('to', to);
   u.searchParams.set('amount', amount);
   if (memo) u.searchParams.set('memo', memo);
@@ -173,6 +183,10 @@ async function main() {
           <select id="chainSel" style="background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:8px 10px">
             <option value="base">Base</option>
             <option value="eth">Ethereum</option>
+          </select>
+          <select id="tokenSel" style="background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:8px 10px">
+            <option value="usdc">USDC</option>
+            <option value="usdt">USDT</option>
           </select>
           <button id="langJa" type="button">日本語</button>
           <button id="langEn" type="button">English</button>
@@ -380,6 +394,7 @@ async function main() {
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
   const chainSelEl = $('chainSel') as HTMLSelectElement;
+  const tokenSelEl = $('tokenSel') as HTMLSelectElement;
   const langJaBtn = $('langJa') as HTMLButtonElement;
   const langEnBtn = $('langEn') as HTMLButtonElement;
   const tagLineEl = $('tagLine')!;
@@ -460,7 +475,9 @@ async function main() {
   let activeTab: Tab = 'pay';
   let lang: Lang = 'ja';
   let currentChain: keyof typeof CHAIN_CONFIGS = 'base';
+  let currentTokenKey: 'usdc' | 'usdt' = 'usdc';
   let invoiceContextChain: keyof typeof CHAIN_CONFIGS | null = null;
+  let invoiceContextToken: 'usdc' | 'usdt' | null = null;
   let hasInvoiceContext = false;
   let invoiceSigMismatch = false;
   let signedByIssuer: string | null = null;
@@ -611,6 +628,10 @@ async function main() {
     return CHAIN_CONFIGS[currentChain];
   }
 
+  function tokenCfg() {
+    return TOKEN_CONFIGS[currentChain][currentTokenKey];
+  }
+
   function ensurePayPanelInitialized() {
     if (payPanelInitialized) return;
     renderLastPaymentSummary();
@@ -625,7 +646,7 @@ async function main() {
   }
 
   function applyI18n() {
-    tagLineEl.textContent = `${chainCfg().label} USDC invoice link`;
+    tagLineEl.textContent = `${chainCfg().label} ${tokenCfg().symbol} invoice link`;
     tabPayBtn.textContent = tr('tabPay');
     tabCreateBtn.textContent = tr('tabCreate');
     tabHintEl.textContent = tr('tabHint');
@@ -683,8 +704,9 @@ async function main() {
     }
     if (payPanelInitialized) renderLastPaymentSummary();
 
-    usdcContractLineEl.innerHTML = `USDC contract (${chainCfg().label}): <span class="mono">${chainCfg().usdc}</span>`;
+    usdcContractLineEl.innerHTML = `${tokenCfg().symbol} contract (${chainCfg().label}): <span class="mono">${tokenCfg().address}</span>`;
     chainSelEl.value = currentChain;
+    tokenSelEl.value = currentTokenKey;
     refreshSignState();
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
@@ -853,7 +875,7 @@ async function main() {
         lastChainId = null;
       }
 
-      const usdc = new ethers.Contract(chainCfg().usdc, ERC20_ABI, browserProvider);
+      const usdc = new ethers.Contract(tokenCfg().address, ERC20_ABI, browserProvider);
       usdcBalanceUnits = (await usdc.balanceOf(connectedAddress)) as bigint;
       lastBalErr = null;
     } catch (e: any) {
@@ -869,9 +891,10 @@ async function main() {
   let compactMode = true;
   let invoiceExpTs: number | null = null;
 
-  function invoiceCanonical(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+  function invoiceCanonical(payload: { chain: string; token: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
     return JSON.stringify({
       c: payload.chain,
+      tk: payload.token,
       t: (payload.to || '').toLowerCase(),
       a: String(payload.amount || ''),
       m: payload.memo || '',
@@ -882,11 +905,11 @@ async function main() {
     });
   }
 
-  function makeInvoiceSig(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+  function makeInvoiceSig(payload: { chain: string; token: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
     return ethers.keccak256(ethers.toUtf8Bytes(invoiceCanonical(payload)));
   }
 
-  function invoiceSignMessage(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+  function invoiceSignMessage(payload: { chain: string; token: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
     return `AgentPay Invoice\n${invoiceCanonical(payload)}`;
   }
 
@@ -950,7 +973,7 @@ async function main() {
       <div>time: <span class="mono">${when}</span></div>
       <div>tx: <span class="mono">${s.txHash.slice(0, 10)}…${s.txHash.slice(-8)}</span></div>
       <div>to: <span class="mono">${s.to}</span></div>
-      <div>amount: <span class="mono">${s.amount}</span> USDC</div>
+      <div>amount: <span class="mono">${s.amount}</span> ${tokenCfg().symbol}</div>
       ${memoLine}
       ${invLine}
       <div class="btns" style="margin-top:6px">
@@ -966,7 +989,7 @@ async function main() {
           `time: ${new Date(s.ts).toISOString()}`,
           `tx: ${s.txHash}`,
           `to: ${s.to}`,
-          `amount: ${s.amount} USDC`,
+          `amount: ${s.amount} ${tokenCfg().symbol}`,
           s.memo ? `memo: ${s.memo}` : '',
           s.invoiceId ? `invoiceId: ${s.invoiceId}` : '',
           `link: ${chainCfg().explorer}/tx/${s.txHash}`, 
@@ -1007,7 +1030,7 @@ async function main() {
       const expText = r.expTs ? (lang === 'ja' ? `有効期限: ${new Date(r.expTs * 1000).toLocaleString()}` : `Expiry: ${new Date(r.expTs * 1000).toLocaleString()}`) : (lang === 'ja' ? '無期限' : 'No expiry');
       const idText = r.invoiceId ? ` / invoiceId: <span class="mono">${r.invoiceId}</span>` : '';
       return `<div style="border:1px solid #273142;border-radius:10px;padding:8px;margin-bottom:8px">
-        <div><span class="mono">${r.amount}</span> USDC / <span class="mono">${r.to.slice(0, 8)}…${r.to.slice(-6)}</span>${idText}</div>
+        <div><span class="mono">${r.amount}</span> ${tokenCfg().symbol} / <span class="mono">${r.to.slice(0, 8)}…${r.to.slice(-6)}</span>${idText}</div>
         <div class="small">${expText}</div>
         <div class="btns" style="margin-top:6px">
           <button data-act="use" data-idx="${idx}">${tr('useThis')}</button>
@@ -1117,6 +1140,7 @@ async function main() {
 
     const sig = makeInvoiceSig({
       chain: chainCfg().key,
+      token: currentTokenKey,
       to,
       amount,
       memo,
@@ -1127,7 +1151,7 @@ async function main() {
     });
 
     if (compactMode) {
-      const packed = encodeCompact({ t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
+      const packed = encodeCompact({ tk: currentTokenKey, t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
       u.searchParams.set('d', packed);
       u.searchParams.set('sig', sig);
       if (signedByIssuer && signedProof) {
@@ -1141,6 +1165,7 @@ async function main() {
     if (flexAmount) u.searchParams.set('flexAmount', '1');
     else u.searchParams.delete('flexAmount');
 
+    u.searchParams.set('token', currentTokenKey);
     u.searchParams.set('to', to);
     u.searchParams.set('amount', amount);
     if (memo) u.searchParams.set('memo', memo);
@@ -1212,7 +1237,7 @@ async function main() {
     // Page URL (no params)
     pageUrlEl.value = `${location.origin}${location.pathname}`;
 
-    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(chainCfg().key, to, amount, memo, invoiceId) : location.href;
+    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(chainCfg().key, currentTokenKey, to, amount, memo, invoiceId) : location.href;
 
     const hasBalance = units !== null ? usdcBalanceUnits >= units : false;
 
@@ -1391,7 +1416,7 @@ async function main() {
 
       const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
       const data = iface.encodeFunctionData('transfer', [to, units]);
-      const txParams = { from: connectedAddress, to: chainCfg().usdc, data, value: '0x0' };
+      const txParams = { from: connectedAddress, to: tokenCfg().address, data, value: '0x0' };
 
       const provider = wcProvider ? wcProvider : window.ethereum;
       const hash = await provider?.request?.({ method: 'eth_sendTransaction', params: [txParams] });
@@ -1474,7 +1499,7 @@ async function main() {
 
       if (Array.isArray(rcpt.logs)) {
         for (const l of rcpt.logs) {
-          if ((l?.address || '').toLowerCase() !== chainCfg().usdc.toLowerCase()) continue;
+          if ((l?.address || '').toLowerCase() !== tokenCfg().address.toLowerCase()) continue;
           if (!Array.isArray(l?.topics) || l.topics.length < 3) continue;
           if ((l.topics[0] || '').toLowerCase() !== transferTopic) continue;
 
@@ -1495,7 +1520,7 @@ async function main() {
       }
 
       const statusText = ok ? '成功' : '失敗';
-      const transferText = foundTransfer ? 'USDC Transferログあり' : 'USDC Transferログ未検出';
+      const transferText = foundTransfer ? `${tokenCfg().symbol} Transferログあり` : `${tokenCfg().symbol} Transferログ未検出`;
       const toText = isHexAddress(expectedTo) ? (matchedTo ? '宛先一致' : '宛先不一致') : '宛先未入力';
       const amountText = expectedUnits !== null ? (matchedAmount ? '金額一致' : '金額不一致') : '金額未入力';
       const verifyOk = ok && foundTransfer && (!isHexAddress(expectedTo) || matchedTo) && (expectedUnits === null || matchedAmount);
@@ -1529,6 +1554,9 @@ async function main() {
     const chainParam = p.get('chain');
     if (chainParam === 'eth' || chainParam === 'base') currentChain = chainParam;
 
+    const tokenParam = p.get('token');
+    if (tokenParam === 'usdc' || tokenParam === 'usdt') currentTokenKey = tokenParam;
+
     const dParam = p.get('d');
     const sigParam = p.get('sig') || '';
     const issuerParam = p.get('issuer') || '';
@@ -1536,6 +1564,9 @@ async function main() {
     hasInvoiceContext = !!(dParam || p.get('to') || p.get('amount'));
     invoiceContextChain = (chainParam === 'eth' || chainParam === 'base') ? chainParam : null;
     const unpacked = dParam ? decodeCompact(dParam) : null;
+    const unpackedToken = unpacked?.tk;
+    if (unpackedToken === 'usdc' || unpackedToken === 'usdt') currentTokenKey = unpackedToken;
+    invoiceContextToken = (unpackedToken === 'usdc' || unpackedToken === 'usdt') ? unpackedToken : ((tokenParam === 'usdc' || tokenParam === 'usdt') ? tokenParam : null);
 
     const defTo = unpacked?.t || p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
     const defAmount = unpacked?.a || p.get('amount') || '';
@@ -1559,6 +1590,7 @@ async function main() {
     if (hasInvoiceContext && invoiceContextChain && sigParam) {
       const payload = {
         chain: invoiceContextChain,
+        token: invoiceContextToken || 'usdc',
         to: defTo,
         amount: defAmount,
         memo: defMemo,
@@ -1628,6 +1660,7 @@ async function main() {
     clearSignedProof();
     const u = new URL(location.href);
     u.searchParams.set('chain', next);
+    u.searchParams.set('token', currentTokenKey);
     history.replaceState(null, '', u.toString());
     applyI18n();
     refresh();
@@ -1635,7 +1668,19 @@ async function main() {
     if (connectedAddress) void updateUsdcBalance();
   }
 
+  function switchToken(next: 'usdc' | 'usdt') {
+    currentTokenKey = next;
+    clearSignedProof();
+    const u = new URL(location.href);
+    u.searchParams.set('token', next);
+    history.replaceState(null, '', u.toString());
+    applyI18n();
+    refresh();
+    if (connectedAddress) void updateUsdcBalance();
+  }
+
   chainSelEl.addEventListener('change', () => switchChain((chainSelEl.value === 'eth' ? 'eth' : 'base')));
+  tokenSelEl.addEventListener('change', () => switchToken((tokenSelEl.value === 'usdt' ? 'usdt' : 'usdc')));
   langJaBtn.addEventListener('click', () => switchLang('ja'));
   langEnBtn.addEventListener('click', () => switchLang('en'));
 
@@ -1679,7 +1724,7 @@ async function main() {
     if (usdcToUnits(amount) === null) return showErr(lang === 'ja' ? '署名前に amount を正しく入力してください。' : 'Please enter valid amount before signing.');
 
     const expTs = expMin > 0 ? Math.floor(Date.now() / 1000) + Math.floor(expMin * 60) : 0;
-    const payload = { chain: chainCfg().key, to, amount, memo, invoiceId, exp: expTs, lock: 1, flex: flexAmount ? 1 : 0 };
+    const payload = { chain: chainCfg().key, token: currentTokenKey, to, amount, memo, invoiceId, exp: expTs, lock: 1, flex: flexAmount ? 1 : 0 };
     try {
       const message = invoiceSignMessage(payload);
       const proof = await signer.signMessage(message);
@@ -1813,7 +1858,7 @@ async function main() {
     const amount = amountEl.value.trim();
     const memo = memoEl.value.trim();
     const invoiceId = invoiceIdEl.value.trim();
-    const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}${invoiceId ? `\ninvoiceId: ${invoiceId}` : ''}`;
+    const text = `to: ${to}\namount(${tokenCfg().symbol}): ${amount}${memo ? `\nmemo: ${memo}` : ''}${invoiceId ? `\ninvoiceId: ${invoiceId}` : ''}`;
     toast('コピー中…');
     try {
       await navigator.clipboard.writeText(text);
@@ -1850,7 +1895,7 @@ async function main() {
     }
 
     const esc = (v: string) => `"${String(v || '').replace(/"/g, '""')}"`;
-    const header = ['timestamp', 'txHash', 'to', 'amountUSDC', 'memo', 'invoiceId'];
+    const header = ['timestamp', 'txHash', 'to', `amount${tokenCfg().symbol}`, 'memo', 'invoiceId'];
     const body = rows.map((r) => [new Date(r.ts).toISOString(), r.txHash, r.to, r.amount, r.memo || '', r.invoiceId || '']);
     const csv = [header, ...body].map((line) => line.map(esc).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
