@@ -1,10 +1,12 @@
 # AgentPay
 
+[日本語](./README.ja.md) | **English**
+
 AgentPay is a lightweight, non-custodial invoice dApp for **Base USDC**.
 
 - ✅ Connect wallet (Injected / WalletConnect)
 - ✅ Send USDC on Base with transaction proof
-- ✅ Invoice creator with **fixed** or **flexible amount** links
+- ✅ Invoice Creator with **fixed** or **flexible amount** links
 - ✅ Safety UX: lock mode, balance check, BaseScan links
 
 ## Live Demo
@@ -14,9 +16,9 @@ AgentPay is a lightweight, non-custodial invoice dApp for **Base USDC**.
 
 ## 3-step usage
 
-1. Open **請求作成** tab.
+1. Open the **Invoice Creator** tab.
 2. Set `to / amount / memo` and choose fixed or flexible amount.
-3. Click **請求リンク生成** and share the generated URL.
+3. Click **Generate Invoice Link** and share the URL.
 
 ## Example links
 
@@ -35,3 +37,8 @@ AgentPay is a lightweight, non-custodial invoice dApp for **Base USDC**.
 
 - This app is non-custodial (no private key storage).
 - On-chain memo is not embedded in ERC-20 transfer; memo is for off-chain matching.
+
+## Outreach templates
+
+- Japanese: [OUTREACH.ja.md](./OUTREACH.ja.md)
+- English: [OUTREACH.en.md](./OUTREACH.en.md)
