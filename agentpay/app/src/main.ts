@@ -101,8 +101,12 @@ async function main() {
     <div class="wrap">
       <div class="h">
         <h1>AgentPay</h1>
-        <div class="tag">Base USDC invoice link</div>
-        <div id="netPill" class="pill" style="margin-left:auto">Wallet: not connected</div>
+        <div id="tagLine" class="tag">Base USDC invoice link</div>
+        <div class="btns" style="margin-left:auto;margin-top:0">
+          <button id="langJa" type="button">日本語</button>
+          <button id="langEn" type="button">English</button>
+        </div>
+        <div id="netPill" class="pill">Wallet: not connected</div>
       </div>
 
       <div class="card">
@@ -110,7 +114,7 @@ async function main() {
           <button id="tabPay" type="button" class="primary">支払い</button>
           <button id="tabCreate" type="button">請求作成</button>
         </div>
-        <div class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
+        <div id="tabHint" class="small" style="margin-top:8px">支払い / 請求作成 を切り替えできます。</div>
       </div>
 
       <div id="toast" class="pill" style="display:none; position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:9999; justify-content:center; background:#0f1320; max-width:90%; text-align:center"></div>
@@ -118,23 +122,23 @@ async function main() {
       <div id="panelPay" class="card">
         <div class="row">
           <div class="col">
-            <label>支払い先 (to)</label>
+            <label id="lblTo">支払い先 (to)</label>
             <input id="to" class="mono" placeholder="0x..." />
           </div>
           <div class="col">
-            <label>金額 (USDC)</label>
+            <label id="lblAmount">金額 (USDC)</label>
             <input id="amount" class="mono" placeholder="10" inputmode="decimal" />
           </div>
         </div>
         <div class="row" style="margin-top:10px">
           <div class="col" style="min-width:100%">
-            <label>メモ (任意)</label>
+            <label id="lblMemo">メモ (任意)</label>
             <input id="memo" placeholder="task-123" />
           </div>
         </div>
         <div class="row" style="margin-top:10px">
           <div class="col" style="min-width:100%">
-            <label>請求ID (invoiceId, 任意)</label>
+            <label id="lblInvoiceId">請求ID (invoiceId, 任意)</label>
             <input id="invoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
@@ -156,7 +160,7 @@ async function main() {
         <div id="expState" class="small" style="margin-top:8px"></div>
 
         <div class="sep"></div>
-        <div class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）</div>
+        <div id="verifyTitle" class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）</div>
         <div class="row">
           <input id="verifyTx" class="mono" placeholder="0x...（66文字）" />
           <button id="verifyBtn">確認する</button>
@@ -174,44 +178,44 @@ async function main() {
       </div>
 
       <div id="panelCreate" class="card" style="display:none">
-        <div class="muted" style="margin-bottom:8px">請求作成（Invoice Creator）</div>
+        <div id="createTitle" class="muted" style="margin-bottom:8px">請求作成（Invoice Creator）</div>
         <div class="row">
           <div class="col">
-            <label>to</label>
+            <label id="lblInvTo">to</label>
             <input id="invTo" class="mono" placeholder="0x..." />
           </div>
           <div class="col">
-            <label>amount (USDC)</label>
+            <label id="lblInvAmount">amount (USDC)</label>
             <input id="invAmount" class="mono" placeholder="10" inputmode="decimal" />
           </div>
         </div>
         <div class="row" style="margin-top:10px">
           <div class="col" style="min-width:100%">
-            <label>memo (optional)</label>
+            <label id="lblInvMemo">memo (optional)</label>
             <input id="invMemo" placeholder="task-123" />
           </div>
         </div>
         <div class="row" style="margin-top:10px">
           <div class="col" style="min-width:100%">
-            <label>invoiceId (optional)</label>
+            <label id="lblInvInvoiceId">invoiceId (optional)</label>
             <input id="invInvoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
 
         <div class="row" style="margin-top:10px">
           <div class="col">
-            <label>有効期限（分, 0で無期限）</label>
+            <label id="lblExp">有効期限（分, 0で無期限）</label>
             <input id="invExpMin" class="mono" placeholder="1440" inputmode="numeric" />
           </div>
         </div>
 
         <div class="row" style="margin-top:10px">
           <div class="col">
-            <label>支払い側で金額を編集</label>
+            <label id="lblFlex">支払い側で金額を編集</label>
             <div class="btns" style="margin-top:0">
               <button id="amtFlex" type="button">OFF（固定）</button>
             </div>
-            <div class="small">ONで金額のみ編集可（宛先/メモは固定）。</div>
+            <div id="flexHint" class="small">ONで金額のみ編集可（宛先/メモは固定）。</div>
           </div>
         </div>
 
@@ -221,7 +225,7 @@ async function main() {
           <button id="apply">この請求をフォームに反映</button>
         </div>
         <div class="small" id="modeHint" style="margin-top:8px">モード: 固定金額（amount編集不可）</div>
-        <div class="muted" style="margin-top:10px">生成された請求リンク</div>
+        <div id="invoiceGeneratedLabel" class="muted" style="margin-top:10px">生成された請求リンク</div>
         <div class="row">
           <input id="invoiceUrl" class="mono" readonly />
           <button id="copyInvoice">URLコピー</button>
@@ -231,21 +235,21 @@ async function main() {
       </div>
 
       <div class="card">
-        <div class="muted" style="margin-bottom:8px">ページURL（このページのトップ）</div>
+        <div id="pageUrlTitle" class="muted" style="margin-bottom:8px">ページURL（このページのトップ）</div>
         <div class="row">
           <input id="pageUrl" class="mono" readonly />
           <button id="copyPage">URLコピー</button>
         </div>
-        <div class="small" style="margin-top:8px">パラメータ無しのURL。案内・ブックマーク用。</div>
+        <div id="pageUrlHint" class="small" style="margin-top:8px">パラメータ無しのURL。案内・ブックマーク用。</div>
       </div>
 
       <div class="card">
-        <div class="muted" style="margin-bottom:8px">共有用リンク（現在のURL / パラメータ付き）</div>
+        <div id="shareUrlTitle" class="muted" style="margin-bottom:8px">共有用リンク（現在のURL / パラメータ付き）</div>
         <div class="row">
           <input id="share" class="mono" readonly />
           <button id="copyShare">URLコピー</button>
         </div>
-        <div class="small" style="margin-top:8px">請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。</div>
+        <div id="shareUrlHint" class="small" style="margin-top:8px">請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。</div>
       </div>
     </div>
   `)
@@ -253,8 +257,12 @@ async function main() {
 
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
+  const langJaBtn = $('langJa') as HTMLButtonElement;
+  const langEnBtn = $('langEn') as HTMLButtonElement;
+  const tagLineEl = $('tagLine')!;
   const tabPayBtn = $('tabPay') as HTMLButtonElement;
   const tabCreateBtn = $('tabCreate') as HTMLButtonElement;
+  const tabHintEl = $('tabHint')!;
   const toastEl = $('toast')!;
   const panelPay = $('panelPay')!;
   const panelCreate = $('panelCreate')!;
@@ -301,7 +309,85 @@ async function main() {
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
 
   type Tab = 'pay' | 'create';
+  type Lang = 'ja' | 'en';
   let activeTab: Tab = 'pay';
+  let lang: Lang = 'ja';
+
+  const i18n = {
+    ja: {
+      walletNotConnected: 'Wallet: 未接続',
+      walletConnected: 'Wallet',
+      tabPay: '支払い',
+      tabCreate: '請求作成',
+      tabHint: '支払い / 請求作成 を切り替えできます。',
+      lblTo: '支払い先 (to)', lblAmount: '金額 (USDC)', lblMemo: 'メモ (任意)', lblInvoiceId: '請求ID (invoiceId, 任意)',
+      connect: 'ウォレット接続', openCbw: 'Coinbase Walletで開く', disconnect: '切断', pay: '支払う（USDC送金）', copy: 'コピー（宛先/金額/メモ）',
+      verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する',
+      createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
+      lblFlex: '支払い側で金額を編集', flexHint: 'ONで金額のみ編集可（宛先/メモは固定）。',
+      gen: '請求リンク生成', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く',
+      pageUrlTitle: 'ページURL（このページのトップ）', pageUrlHint: 'パラメータ無しのURL。案内・ブックマーク用。',
+      shareUrlTitle: '共有用リンク（現在のURL / パラメータ付き）', shareUrlHint: '請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。',
+      modeFixed: 'モード: 固定金額（amount編集不可）', modeFlex: 'モード: 任意金額（amount編集可 / to,memo固定）',
+      expNoLimit: '有効期限: 無期限',
+    },
+    en: {
+      walletNotConnected: 'Wallet: not connected',
+      walletConnected: 'Wallet',
+      tabPay: 'Pay',
+      tabCreate: 'Create Invoice',
+      tabHint: 'Switch between Pay and Invoice Creator.',
+      lblTo: 'Recipient (to)', lblAmount: 'Amount (USDC)', lblMemo: 'Memo (optional)', lblInvoiceId: 'Invoice ID (optional)',
+      connect: 'Connect Wallet', openCbw: 'Open in Coinbase Wallet', disconnect: 'Disconnect', pay: 'Pay (USDC transfer)', copy: 'Copy (to/amount/memo)',
+      verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify',
+      createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
+      lblFlex: 'Allow payer to edit amount', flexHint: 'When ON, only amount is editable (to/memo locked).',
+      gen: 'Generate Invoice Link', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open',
+      pageUrlTitle: 'Page URL (top page)', pageUrlHint: 'URL without parameters. For guide/bookmark.',
+      shareUrlTitle: 'Share URL (current URL with parameters)', shareUrlHint: 'For payment requests, prefer generated invoice URL above.',
+      modeFixed: 'Mode: fixed amount (amount locked)', modeFlex: 'Mode: flexible amount (amount editable / to,memo locked)',
+      expNoLimit: 'Expiry: none',
+    }
+  } as const;
+
+  function tr<K extends keyof typeof i18n.ja>(k: K): string {
+    return i18n[lang][k] || i18n.ja[k];
+  }
+
+  function applyI18n() {
+    tagLineEl.textContent = 'Base USDC invoice link';
+    tabPayBtn.textContent = tr('tabPay');
+    tabCreateBtn.textContent = tr('tabCreate');
+    tabHintEl.textContent = tr('tabHint');
+
+    const textMap: Record<string, string> = {
+      lblTo: tr('lblTo'), lblAmount: tr('lblAmount'), lblMemo: tr('lblMemo'), lblInvoiceId: tr('lblInvoiceId'),
+      verifyTitle: tr('verifyTitle'), createTitle: tr('createTitle'), lblInvMemo: tr('lblInvMemo'), lblInvInvoiceId: tr('lblInvInvoiceId'),
+      lblExp: tr('lblExp'), lblFlex: tr('lblFlex'), flexHint: tr('flexHint'),
+      invoiceGeneratedLabel: lang === 'ja' ? '生成された請求リンク' : 'Generated invoice link',
+      pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
+    };
+    Object.entries(textMap).forEach(([id, text]) => {
+      const n = document.getElementById(id);
+      if (n) n.textContent = text;
+    });
+
+    connectBtn.textContent = tr('connect');
+    openInCbw.textContent = tr('openCbw');
+    disconnectBtn.textContent = tr('disconnect');
+    payBtn.textContent = tr('pay');
+    copyBtn.textContent = tr('copy');
+    verifyBtn.textContent = tr('verifyBtn');
+    genBtn.textContent = tr('gen');
+    applyBtn.textContent = tr('apply');
+    copyInvoiceBtn.textContent = tr('copyUrl');
+    copyPageBtn.textContent = tr('copyUrl');
+    copyShareBtn.textContent = tr('copyUrl');
+    openInvoiceEl.textContent = tr('open');
+
+    langJaBtn.classList.toggle('primary', lang === 'ja');
+    langEnBtn.classList.toggle('primary', lang === 'en');
+  }
 
   function setTab(tab: Tab) {
     activeTab = tab;
@@ -357,8 +443,8 @@ async function main() {
 
   function setPill() {
     netPill.textContent = connectedAddress
-      ? `Wallet: ${connectedAddress.slice(0, 6)}…${connectedAddress.slice(-4)}`
-      : 'Wallet: not connected';
+      ? `${tr('walletConnected')}: ${connectedAddress.slice(0, 6)}…${connectedAddress.slice(-4)}`
+      : tr('walletNotConnected');
   }
 
   async function ensureBaseInjected() {
@@ -456,9 +542,7 @@ async function main() {
     memoEl.readOnly = invoiceLocked;
 
     amtFlexBtn.textContent = flexAmount ? 'ON（任意金額）' : 'OFF（固定）';
-    modeHintEl.textContent = flexAmount
-      ? 'モード: 任意金額（amount編集可 / to,memo固定）'
-      : 'モード: 固定金額（amount編集不可）';
+    modeHintEl.textContent = flexAmount ? tr('modeFlex') : tr('modeFixed');
   }
 
   function buildInvoiceUrl(to: string, amount: string, memo: string, invoiceId: string, expTs?: number | null): string {
@@ -512,7 +596,7 @@ async function main() {
         expStateEl.innerHTML = `<span class="warn">この請求リンクは期限切れです（${new Date(invoiceExpTs * 1000).toLocaleString()}）。</span>`;
       }
     } else {
-      expStateEl.textContent = '有効期限: 無期限';
+      expStateEl.textContent = tr('expNoLimit');
     }
 
     payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired);
@@ -764,7 +848,11 @@ async function main() {
   }
 
   function init() {
-    const p = new URL(location.href).searchParams;
+    const u0 = new URL(location.href);
+    const p = u0.searchParams;
+    const langParam = p.get('lang');
+    const savedLang = localStorage.getItem('agentpay_lang');
+    lang = (langParam === 'en' || langParam === 'ja') ? langParam : ((savedLang === 'en' || savedLang === 'ja') ? savedLang : 'ja');
     const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
     const defAmount = p.get('amount') || '';
     const defMemo = p.get('memo') || '';
@@ -801,10 +889,26 @@ async function main() {
 
     openInCbw.href = buildCbwDappLink(location.href);
 
+    applyI18n();
     setLockUI();
     refresh();
     setPill();
   }
+
+  function switchLang(next: Lang) {
+    lang = next;
+    localStorage.setItem('agentpay_lang', next);
+    const u = new URL(location.href);
+    u.searchParams.set('lang', next);
+    history.replaceState(null, '', u.toString());
+    applyI18n();
+    setLockUI();
+    setPill();
+    refresh();
+  }
+
+  langJaBtn.addEventListener('click', () => switchLang('ja'));
+  langEnBtn.addEventListener('click', () => switchLang('en'));
 
   tabPayBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTab('pay'); setMsg('tab: pay'); });
   tabCreateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTab('create'); setMsg('tab: create'); });
