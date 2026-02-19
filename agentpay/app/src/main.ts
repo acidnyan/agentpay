@@ -1,9 +1,27 @@
 import { ethers } from 'ethers';
 
 const WC_PROJECT_ID = '83569f52a2a1226834e65a28e4307fec';
-const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-const CHAIN_ID = 8453;
-const CHAIN_ID_HEX = '0x2105';
+
+const CHAIN_CONFIGS = {
+  base: {
+    key: 'base',
+    label: 'Base',
+    chainId: 8453,
+    chainIdHex: '0x2105',
+    rpcUrl: 'https://mainnet.base.org',
+    explorer: 'https://basescan.org',
+    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  },
+  eth: {
+    key: 'eth',
+    label: 'Ethereum',
+    chainId: 1,
+    chainIdHex: '0x1',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    explorer: 'https://etherscan.io',
+    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  },
+} as const;
 
 type LastTx = {
   hash: string;
@@ -120,9 +138,10 @@ function usdcToUnits(str: string): bigint | null {
   return BigInt(i) * 1000000n + BigInt(frac);
 }
 
-function buildShareUrl(to: string, amount: string, memo: string, invoiceId?: string): string {
+function buildShareUrl(chainKey: string, to: string, amount: string, memo: string, invoiceId?: string): string {
   const u = new URL(location.href);
   u.searchParams.delete('d');
+  u.searchParams.set('chain', chainKey);
   u.searchParams.set('to', to);
   u.searchParams.set('amount', amount);
   if (memo) u.searchParams.set('memo', memo);
@@ -151,6 +170,10 @@ async function main() {
         <h1>AgentPay</h1>
         <div id="tagLine" class="tag">Base USDC invoice link</div>
         <div class="btns" style="margin-left:auto;margin-top:0">
+          <select id="chainSel" style="background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:8px 10px">
+            <option value="base">Base</option>
+            <option value="eth">Ethereum</option>
+          </select>
           <button id="langJa" type="button">日本語</button>
           <button id="langEn" type="button">English</button>
         </div>
@@ -248,9 +271,7 @@ async function main() {
           <span id="footer1">このページは Base 上の USDC 支払い用です（資金を預かりません）。</span>
           <span id="footer2">送金は不可逆なので、宛先と金額を確認してから実行してください。</span>
         </div>
-        <div class="small" style="margin-top:10px">
-          USDC contract (Base): <span class="mono">${USDC}</span>
-        </div>
+        <div id="usdcContractLine" class="small" style="margin-top:10px"></div>
       </div>
 
       <div id="panelCreate" class="card" style="display:none">
@@ -353,6 +374,7 @@ async function main() {
 
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
+  const chainSelEl = $('chainSel') as HTMLSelectElement;
   const langJaBtn = $('langJa') as HTMLButtonElement;
   const langEnBtn = $('langEn') as HTMLButtonElement;
   const tagLineEl = $('tagLine')!;
@@ -371,6 +393,7 @@ async function main() {
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const diagEl = $('diag')!;
+  const usdcContractLineEl = $('usdcContractLine')!;
   const txEl = $('tx')!;
   const lastPayCardEl = $('lastPayCard')!;
   const balEl = $('bal')!;
@@ -426,6 +449,7 @@ async function main() {
   type Lang = 'ja' | 'en';
   let activeTab: Tab = 'pay';
   let lang: Lang = 'ja';
+  let currentChain: keyof typeof CHAIN_CONFIGS = 'base';
   let payPanelInitialized = false;
   let createPanelInitialized = false;
 
@@ -562,6 +586,10 @@ async function main() {
     return i18n[lang][k] || i18n.ja[k];
   }
 
+  function chainCfg() {
+    return CHAIN_CONFIGS[currentChain];
+  }
+
   function ensurePayPanelInitialized() {
     if (payPanelInitialized) return;
     renderLastPaymentSummary();
@@ -576,7 +604,7 @@ async function main() {
   }
 
   function applyI18n() {
-    tagLineEl.textContent = 'Base USDC invoice link';
+    tagLineEl.textContent = `${chainCfg().label} USDC invoice link`;
     tabPayBtn.textContent = tr('tabPay');
     tabCreateBtn.textContent = tr('tabCreate');
     tabHintEl.textContent = tr('tabHint');
@@ -632,6 +660,9 @@ async function main() {
       renderRecentInvoices();
     }
     if (payPanelInitialized) renderLastPaymentSummary();
+
+    usdcContractLineEl.innerHTML = `USDC contract (${chainCfg().label}): <span class="mono">${chainCfg().usdc}</span>`;
+    chainSelEl.value = currentChain;
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -689,7 +720,7 @@ async function main() {
 
     let rpcOk = false;
     try {
-      const r = await fetch('https://mainnet.base.org', {
+      const r = await fetch(chainCfg().rpcUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
@@ -703,7 +734,7 @@ async function main() {
     let chainText = lang === 'ja' ? '未接続' : 'not connected';
     try {
       const cid = await window.ethereum?.request?.({ method: 'eth_chainId' });
-      if (cid) chainText = cid === CHAIN_ID_HEX ? `Base (${cid})` : `${cid}`;
+      if (cid) chainText = cid === chainCfg().chainIdHex ? `${chainCfg().label} (${cid})` : `${cid}`;
     } catch {}
 
     diagEl.textContent = `${tr('diagTitle')}: ${walletOk ? '✅' : '❌'} ${tr('diagWallet')} / ${rpcOk ? '✅' : '❌'} ${tr('diagRpc')} / ${tr('diagChain')}: ${chainText}`;
@@ -725,24 +756,25 @@ async function main() {
       : tr('walletNotConnected');
   }
 
-  async function ensureBaseInjected() {
+  async function ensureChainInjected() {
     const eth = window.ethereum;
     if (!eth?.request) return;
+    const cfg = chainCfg();
     const chainId = await eth.request({ method: 'eth_chainId' });
-    if (chainId === CHAIN_ID_HEX) return;
+    if (chainId === cfg.chainIdHex) return;
     try {
-      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: cfg.chainIdHex }] });
     } catch (e: any) {
       if (e?.code === 4902) {
         await eth.request({
           method: 'wallet_addEthereumChain',
           params: [
             {
-              chainId: CHAIN_ID_HEX,
-              chainName: 'Base',
+              chainId: cfg.chainIdHex,
+              chainName: cfg.label,
               nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-              rpcUrls: ['https://mainnet.base.org'],
-              blockExplorerUrls: ['https://basescan.org'],
+              rpcUrls: [cfg.rpcUrl],
+              blockExplorerUrls: [cfg.explorer],
             },
           ],
         });
@@ -752,22 +784,23 @@ async function main() {
     }
   }
 
-  async function ensureBaseWc() {
+  async function ensureChainWc() {
+    const cfg = chainCfg();
     const chainId = await wcProvider.request({ method: 'eth_chainId' });
-    if (chainId === CHAIN_ID_HEX) return;
+    if (chainId === cfg.chainIdHex) return;
     try {
-      await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_ID_HEX }] });
+      await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: cfg.chainIdHex }] });
     } catch (e: any) {
       if (e?.code === 4902) {
         await wcProvider.request({
           method: 'wallet_addEthereumChain',
           params: [
             {
-              chainId: CHAIN_ID_HEX,
-              chainName: 'Base',
+              chainId: cfg.chainIdHex,
+              chainName: cfg.label,
               nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-              rpcUrls: ['https://mainnet.base.org'],
-              blockExplorerUrls: ['https://basescan.org'],
+              rpcUrls: [cfg.rpcUrl],
+              blockExplorerUrls: [cfg.explorer],
             },
           ],
         });
@@ -787,8 +820,8 @@ async function main() {
     }
 
     try {
-      if (wcProvider) await ensureBaseWc();
-      else await ensureBaseInjected();
+      if (wcProvider) await ensureChainWc();
+      else await ensureChainInjected();
 
       try {
         if (wcProvider) lastChainId = await wcProvider.request({ method: 'eth_chainId' });
@@ -797,7 +830,7 @@ async function main() {
         lastChainId = null;
       }
 
-      const usdc = new ethers.Contract(USDC, ERC20_ABI, browserProvider);
+      const usdc = new ethers.Contract(chainCfg().usdc, ERC20_ABI, browserProvider);
       usdcBalanceUnits = (await usdc.balanceOf(connectedAddress)) as bigint;
       lastBalErr = null;
     } catch (e: any) {
@@ -878,7 +911,7 @@ async function main() {
       ${invLine}
       <div class="btns" style="margin-top:6px">
         <button id="copyPaySummary">${tr('paySummaryCopy')}</button>
-        <a class="btn" target="_blank" rel="noreferrer" href="https://basescan.org/tx/${s.txHash}">BaseScan</a>
+        <a class="btn" target="_blank" rel="noreferrer" href="${chainCfg().explorer}/tx/${s.txHash}">Explorer</a>
       </div>
     </div>`;
 
@@ -892,7 +925,7 @@ async function main() {
           `amount: ${s.amount} USDC`,
           s.memo ? `memo: ${s.memo}` : '',
           s.invoiceId ? `invoiceId: ${s.invoiceId}` : '',
-          `link: https://basescan.org/tx/${s.txHash}`,
+          `link: ${chainCfg().explorer}/tx/${s.txHash}`, 
         ].filter(Boolean).join('\n');
         try {
           await navigator.clipboard.writeText(text);
@@ -1020,6 +1053,7 @@ async function main() {
     u.search = '';
     u.searchParams.set('tab', 'pay');
     u.searchParams.set('lang', lang);
+    u.searchParams.set('chain', chainCfg().key);
 
     if (compactMode) {
       const packed = encodeCompact({ t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
@@ -1052,7 +1086,7 @@ async function main() {
 
     showErr('');
 
-    basescanEl.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
+    basescanEl.href = isHexAddress(to) ? `${chainCfg().explorer}/address/${to}` : `${chainCfg().explorer}/`;
     if (isHexAddress(to)) {
       try {
         toChecksumEl.innerHTML = `checksum: <span class="mono">${ethers.getAddress(to)}</span>`;
@@ -1069,7 +1103,7 @@ async function main() {
     // Page URL (no params)
     pageUrlEl.value = `${location.origin}${location.pathname}`;
 
-    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo, invoiceId) : location.href;
+    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(chainCfg().key, to, amount, memo, invoiceId) : location.href;
 
     const hasBalance = units !== null ? usdcBalanceUnits >= units : false;
 
@@ -1106,7 +1140,7 @@ async function main() {
       setTxHtml('');
     } else {
       const { hash, memo: m, status } = window.__agentpay_last_tx;
-      const url = `https://basescan.org/tx/${hash}`;
+      const url = `${chainCfg().explorer}/tx/${hash}`;
       const memoLine = m ? `<br/>memo: <span class="mono">${m}</span>` : '';
       const st = status ? `<span class="pill" style="margin-left:8px">${status}</span>` : '';
       setTxHtml(
@@ -1142,8 +1176,8 @@ async function main() {
       const balText = `${tr('usdcBalance')}: ${frac ? `${whole}.${frac}` : whole}`;
       const chainTxt = lastChainId ? `chainId: ${lastChainId}` : 'chainId: (unknown)';
       const errTxt = lastBalErr ? ` / balErr: ${lastBalErr}` : '';
-      const addrScan = `https://basescan.org/address/${connectedAddress}`;
-      const holdings = `https://basescan.org/tokenholdings?a=${connectedAddress}`;
+      const addrScan = `${chainCfg().explorer}/address/${connectedAddress}`;
+      const holdings = `${chainCfg().explorer}/tokenholdings?a=${connectedAddress}`;
       setBalHtml(
         `${balText} / ${chainTxt}${errTxt}<br/>BaseScan: <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${addrScan}">address</a> <a class="btn" style="padding:4px 8px" target="_blank" rel="noreferrer" href="${holdings}">token holdings</a>`
       );
@@ -1163,7 +1197,7 @@ async function main() {
     if (window.ethereum?.request) {
       try {
         await window.ethereum.request({ method: 'eth_requestAccounts' });
-        await ensureBaseInjected();
+        await ensureChainInjected();
         browserProvider = new ethers.BrowserProvider(window.ethereum as any);
         signer = await browserProvider.getSigner();
         connectedAddress = await (signer as any).getAddress();
@@ -1181,15 +1215,15 @@ async function main() {
     const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
     wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
-      chains: [CHAIN_ID],
-      optionalChains: [CHAIN_ID],
+      chains: [chainCfg().chainId],
+      optionalChains: [chainCfg().chainId],
       showQrModal: true,
     });
     await wcProvider.connect();
     browserProvider = new ethers.BrowserProvider(wcProvider);
     signer = await browserProvider.getSigner();
     connectedAddress = await (signer as any).getAddress();
-    await ensureBaseWc();
+    await ensureChainWc();
     setPill();
     setMsg('接続しました（WalletConnect）。');
     await updateUsdcBalance();
@@ -1236,12 +1270,12 @@ async function main() {
     setMsg('トランザクション作成中…');
 
     try {
-      if (wcProvider) await ensureBaseWc();
-      else await ensureBaseInjected();
+      if (wcProvider) await ensureChainWc();
+      else await ensureChainInjected();
 
       const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
       const data = iface.encodeFunctionData('transfer', [to, units]);
-      const txParams = { from: connectedAddress, to: USDC, data, value: '0x0' };
+      const txParams = { from: connectedAddress, to: chainCfg().usdc, data, value: '0x0' };
 
       const provider = wcProvider ? wcProvider : window.ethereum;
       const hash = await provider?.request?.({ method: 'eth_sendTransaction', params: [txParams] });
@@ -1303,7 +1337,7 @@ async function main() {
         method: 'eth_getTransactionReceipt',
         params: [hash],
       };
-      const res = await fetch('https://mainnet.base.org', {
+      const res = await fetch(chainCfg().rpcUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
@@ -1311,8 +1345,8 @@ async function main() {
       const json = await res.json();
       const rcpt = json?.result;
       if (!rcpt) {
-        verifyResultEl.innerHTML = `未確認（pending か未検出）: <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScanで確認</a>`;
-        lastVerifyText = `tx: ${hash}\nstatus: pending_or_not_found\nlink: https://basescan.org/tx/${hash}`;
+        verifyResultEl.innerHTML = `未確認（pending か未検出）: <a target="_blank" rel="noreferrer" href="${chainCfg().explorer}/tx/${hash}">Explorerで確認</a>`;
+        lastVerifyText = `tx: ${hash}\nstatus: pending_or_not_found\nlink: ${chainCfg().explorer}/tx/${hash}`;
         return;
       }
 
@@ -1324,7 +1358,7 @@ async function main() {
 
       if (Array.isArray(rcpt.logs)) {
         for (const l of rcpt.logs) {
-          if ((l?.address || '').toLowerCase() !== USDC.toLowerCase()) continue;
+          if ((l?.address || '').toLowerCase() !== chainCfg().usdc.toLowerCase()) continue;
           if (!Array.isArray(l?.topics) || l.topics.length < 3) continue;
           if ((l.topics[0] || '').toLowerCase() !== transferTopic) continue;
 
@@ -1352,7 +1386,7 @@ async function main() {
       const judge = verifyOk ? '<b style="color:var(--ok)">検証OK</b>' : '<b style="color:var(--danger)">要確認</b>';
 
       const block = parseInt(rcpt.blockNumber || '0x0', 16);
-      verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${block}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
+      verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${block}</span> / <a target="_blank" rel="noreferrer" href="${chainCfg().explorer}/tx/${hash}">Explorer</a>`;
       lastVerifyText = [
         `tx: ${hash}`,
         `verify: ${verifyOk ? 'ok' : 'review'}`,
@@ -1361,7 +1395,7 @@ async function main() {
         `to_match: ${matchedTo ? 'yes' : 'no'}`,
         `amount_match: ${matchedAmount ? 'yes' : 'no'}`,
         `block: ${block}`,
-        `link: https://basescan.org/tx/${hash}`,
+        `link: ${chainCfg().explorer}/tx/${hash}`, 
       ].join('\n');
     } catch (e: any) {
       const m = e?.message || String(e);
@@ -1376,6 +1410,9 @@ async function main() {
     const langParam = p.get('lang');
     const savedLang = localStorage.getItem('agentpay_lang');
     lang = (langParam === 'en' || langParam === 'ja') ? langParam : ((savedLang === 'en' || savedLang === 'ja') ? savedLang : 'ja');
+    const chainParam = p.get('chain');
+    if (chainParam === 'eth' || chainParam === 'base') currentChain = chainParam;
+
     const dParam = p.get('d');
     const unpacked = dParam ? decodeCompact(dParam) : null;
 
@@ -1436,6 +1473,18 @@ async function main() {
     void runStartupDiagnostics();
   }
 
+  function switchChain(next: keyof typeof CHAIN_CONFIGS) {
+    currentChain = next;
+    const u = new URL(location.href);
+    u.searchParams.set('chain', next);
+    history.replaceState(null, '', u.toString());
+    applyI18n();
+    refresh();
+    void runStartupDiagnostics();
+    if (connectedAddress) void updateUsdcBalance();
+  }
+
+  chainSelEl.addEventListener('change', () => switchChain((chainSelEl.value === 'eth' ? 'eth' : 'base')));
   langJaBtn.addEventListener('click', () => switchLang('ja'));
   langEnBtn.addEventListener('click', () => switchLang('en'));
 
