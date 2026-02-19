@@ -42,6 +42,15 @@ type InvoiceRecord = {
   expTs?: number | null;
 };
 
+type PaymentSummary = {
+  ts: number;
+  txHash: string;
+  to: string;
+  amount: string;
+  memo?: string;
+  invoiceId?: string;
+};
+
 declare global {
   interface Window {
     __agentpay_last_tx?: LastTx;
@@ -218,6 +227,7 @@ async function main() {
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
         <div id="tx" class="muted" style="margin-top:6px"></div>
+        <div id="lastPayCard" class="small" style="margin-top:8px"></div>
         <div id="bal" class="muted" style="margin-top:6px"></div>
         <div id="err" class="warn" style="margin-top:10px;display:none"></div>
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
@@ -361,6 +371,7 @@ async function main() {
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const txEl = $('tx')!;
+  const lastPayCardEl = $('lastPayCard')!;
   const balEl = $('bal')!;
   const errEl = $('err')!;
   const okEl = $('ok')!;
@@ -471,6 +482,9 @@ async function main() {
       noRecentInvoices: 'まだ請求履歴がありません。',
       useThis: 'この内容を反映',
       copyLink: 'リンクコピー',
+      paySummaryTitle: '直近の支払いサマリー',
+      paySummaryCopy: 'サマリーをコピー',
+      noPaySummary: 'まだ支払いサマリーがありません。',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -527,6 +541,9 @@ async function main() {
       noRecentInvoices: 'No invoice history yet.',
       useThis: 'Apply this',
       copyLink: 'Copy link',
+      paySummaryTitle: 'Latest payment summary',
+      paySummaryCopy: 'Copy summary',
+      noPaySummary: 'No payment summary yet.',
     }
   } as const;
 
@@ -587,6 +604,7 @@ async function main() {
     const sel = tplSelectEl.value;
     refreshTemplateSelect(sel);
     renderRecentInvoices();
+    renderLastPaymentSummary();
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -768,6 +786,66 @@ async function main() {
     const arr = loadPaymentHistory();
     arr.unshift(rec);
     localStorage.setItem('agentpay_payments', JSON.stringify(arr.slice(0, 500)));
+  }
+
+  function loadLastPaymentSummary(): PaymentSummary | null {
+    try {
+      const v = localStorage.getItem('agentpay_last_payment');
+      if (!v) return null;
+      const obj = JSON.parse(v);
+      return obj && typeof obj === 'object' ? obj : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLastPaymentSummary(rec: PaymentSummary) {
+    localStorage.setItem('agentpay_last_payment', JSON.stringify(rec));
+  }
+
+  function renderLastPaymentSummary() {
+    const s = loadLastPaymentSummary();
+    if (!s) {
+      lastPayCardEl.textContent = tr('noPaySummary');
+      return;
+    }
+    const when = new Date(s.ts).toLocaleString();
+    const memoLine = s.memo ? `<div>memo: <span class="mono">${s.memo}</span></div>` : '';
+    const invLine = s.invoiceId ? `<div>invoiceId: <span class="mono">${s.invoiceId}</span></div>` : '';
+    lastPayCardEl.innerHTML = `<div style="border:1px solid #273142;border-radius:10px;padding:8px">
+      <div><b>${tr('paySummaryTitle')}</b></div>
+      <div>time: <span class="mono">${when}</span></div>
+      <div>tx: <span class="mono">${s.txHash.slice(0, 10)}…${s.txHash.slice(-8)}</span></div>
+      <div>to: <span class="mono">${s.to}</span></div>
+      <div>amount: <span class="mono">${s.amount}</span> USDC</div>
+      ${memoLine}
+      ${invLine}
+      <div class="btns" style="margin-top:6px">
+        <button id="copyPaySummary">${tr('paySummaryCopy')}</button>
+        <a class="btn" target="_blank" rel="noreferrer" href="https://basescan.org/tx/${s.txHash}">BaseScan</a>
+      </div>
+    </div>`;
+
+    const btn = document.getElementById('copyPaySummary') as HTMLButtonElement | null;
+    if (btn) {
+      btn.onclick = async () => {
+        const text = [
+          `time: ${new Date(s.ts).toISOString()}`,
+          `tx: ${s.txHash}`,
+          `to: ${s.to}`,
+          `amount: ${s.amount} USDC`,
+          s.memo ? `memo: ${s.memo}` : '',
+          s.invoiceId ? `invoiceId: ${s.invoiceId}` : '',
+          `link: https://basescan.org/tx/${s.txHash}`,
+        ].filter(Boolean).join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          toast(lang === 'ja' ? 'サマリーをコピーしました' : 'Copied summary');
+        } catch {
+          showErr(lang === 'ja' ? 'コピーに失敗しました。' : 'Failed to copy.');
+        }
+      };
+    }
   }
 
   function loadInvoiceHistory(): InvoiceRecord[] {
@@ -1125,7 +1203,10 @@ async function main() {
 
       showOk(`支払い完了: ${hash}`);
       setMsg('confirmed');
-      savePaymentHistory({ ts: Date.now(), txHash: hash, to, amount, memo, invoiceId });
+      const paidAt = Date.now();
+      savePaymentHistory({ ts: paidAt, txHash: hash, to, amount, memo, invoiceId });
+      saveLastPaymentSummary({ ts: paidAt, txHash: hash, to, amount, memo, invoiceId });
+      renderLastPaymentSummary();
       await updateUsdcBalance();
 
       if (memo || invoiceId) {
