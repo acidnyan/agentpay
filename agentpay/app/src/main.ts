@@ -200,6 +200,7 @@ async function main() {
         <div id="bal" class="muted" style="margin-top:6px"></div>
         <div id="err" class="warn" style="margin-top:10px;display:none"></div>
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
+        <div id="payChecks" class="small" style="margin-top:8px"></div>
         <div id="expState" class="small" style="margin-top:8px"></div>
 
         <div class="sep"></div>
@@ -322,6 +323,7 @@ async function main() {
   const balEl = $('bal')!;
   const errEl = $('err')!;
   const okEl = $('ok')!;
+  const payChecksEl = $('payChecks')!;
   const expStateEl = $('expState')!;
   const verifyTxEl = $('verifyTx') as HTMLInputElement;
   const verifyBtn = $('verifyBtn') as HTMLButtonElement;
@@ -405,6 +407,11 @@ async function main() {
       flexOn: 'ON（任意金額）',
       flexOff: 'OFF（固定）',
       lockHint: 'ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。',
+      checkTitle: '支払い条件',
+      checkTo: '宛先アドレス',
+      checkAmount: '金額形式',
+      checkBalance: 'USDC残高',
+      checkExpiry: '有効期限内',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -446,6 +453,11 @@ async function main() {
       flexOn: 'ON (flexible)',
       flexOff: 'OFF (fixed)',
       lockHint: 'Lock mode prevents editing payment form fields to reduce mistakes (if flexible amount is ON, only amount is editable).',
+      checkTitle: 'Payment readiness',
+      checkTo: 'Recipient address',
+      checkAmount: 'Amount format',
+      checkBalance: 'USDC balance',
+      checkExpiry: 'Not expired',
     }
   } as const;
 
@@ -751,6 +763,14 @@ async function main() {
 
     const now = Math.floor(Date.now() / 1000);
     const expired = invoiceExpTs !== null && now > invoiceExpTs;
+
+    const checks = [
+      { k: tr('checkTo'), ok: isHexAddress(to) },
+      { k: tr('checkAmount'), ok: units !== null },
+      { k: tr('checkBalance'), ok: !connectedAddress ? false : hasBalance },
+      { k: tr('checkExpiry'), ok: !expired },
+    ];
+    payChecksEl.innerHTML = `${tr('checkTitle')}: ` + checks.map((c) => `${c.ok ? '✅' : '❌'} ${c.k}`).join(' / ');
     if (invoiceExpTs) {
       const remain = invoiceExpTs - now;
       if (remain > 0) {
