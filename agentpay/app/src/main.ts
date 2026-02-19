@@ -73,12 +73,14 @@ function usdcToUnits(str: string): bigint | null {
   return BigInt(i) * 1000000n + BigInt(frac);
 }
 
-function buildShareUrl(to: string, amount: string, memo: string): string {
+function buildShareUrl(to: string, amount: string, memo: string, invoiceId?: string): string {
   const u = new URL(location.href);
   u.searchParams.set('to', to);
   u.searchParams.set('amount', amount);
   if (memo) u.searchParams.set('memo', memo);
   else u.searchParams.delete('memo');
+  if (invoiceId) u.searchParams.set('invoiceId', invoiceId);
+  else u.searchParams.delete('invoiceId');
   return u.toString();
 }
 
@@ -128,6 +130,12 @@ async function main() {
           <div class="col" style="min-width:100%">
             <label>メモ (任意)</label>
             <input id="memo" placeholder="task-123" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col" style="min-width:100%">
+            <label>請求ID (invoiceId, 任意)</label>
+            <input id="invoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
 
@@ -181,6 +189,12 @@ async function main() {
           <div class="col" style="min-width:100%">
             <label>memo (optional)</label>
             <input id="invMemo" placeholder="task-123" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col" style="min-width:100%">
+            <label>invoiceId (optional)</label>
+            <input id="invInvoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
 
@@ -248,6 +262,7 @@ async function main() {
   const toEl = $('to') as HTMLInputElement;
   const amountEl = $('amount') as HTMLInputElement;
   const memoEl = $('memo') as HTMLInputElement;
+  const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const msgEl = $('msg')!;
   const txEl = $('tx')!;
   const balEl = $('bal')!;
@@ -268,6 +283,7 @@ async function main() {
   const invToEl = $('invTo') as HTMLInputElement;
   const invAmountEl = $('invAmount') as HTMLInputElement;
   const invMemoEl = $('invMemo') as HTMLInputElement;
+  const invInvoiceIdEl = $('invInvoiceId') as HTMLInputElement;
   const invExpMinEl = $('invExpMin') as HTMLInputElement;
   const invoiceUrlEl = $('invoiceUrl') as HTMLInputElement;
   const genBtn = $('gen') as HTMLButtonElement;
@@ -445,7 +461,7 @@ async function main() {
       : 'モード: 固定金額（amount編集不可）';
   }
 
-  function buildInvoiceUrl(to: string, amount: string, memo: string, expTs?: number | null): string {
+  function buildInvoiceUrl(to: string, amount: string, memo: string, invoiceId: string, expTs?: number | null): string {
     const u = new URL(location.href);
     u.searchParams.set('tab', 'pay');
     u.searchParams.set('lock', '1');
@@ -456,6 +472,8 @@ async function main() {
     u.searchParams.set('amount', amount);
     if (memo) u.searchParams.set('memo', memo);
     else u.searchParams.delete('memo');
+    if (invoiceId) u.searchParams.set('invoiceId', invoiceId);
+    else u.searchParams.delete('invoiceId');
 
     if (expTs && Number.isFinite(expTs) && expTs > 0) u.searchParams.set('exp', String(Math.floor(expTs)));
     else u.searchParams.delete('exp');
@@ -467,6 +485,7 @@ async function main() {
     const to = toEl.value.trim();
     const amount = amountEl.value.trim();
     const memo = memoEl.value.trim();
+    const invoiceId = invoiceIdEl.value.trim();
 
     showErr('');
 
@@ -478,7 +497,7 @@ async function main() {
     // Page URL (no params)
     pageUrlEl.value = `${location.origin}${location.pathname}`;
 
-    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
+    shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo, invoiceId) : location.href;
 
     const hasBalance = units !== null ? usdcBalanceUnits >= units : false;
 
@@ -614,6 +633,7 @@ async function main() {
     const to = toEl.value.trim();
     const amount = amountEl.value.trim();
     const memo = memoEl.value.trim();
+    const invoiceId = invoiceIdEl.value.trim();
     const units = usdcToUnits(amount);
 
     if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
@@ -657,9 +677,9 @@ async function main() {
       setMsg('confirmed');
       await updateUsdcBalance();
 
-      if (memo) {
+      if (memo || invoiceId) {
         try {
-          await navigator.clipboard.writeText(`memo: ${memo}\ntx: ${hash}`);
+          await navigator.clipboard.writeText(`${memo ? `memo: ${memo}\n` : ''}${invoiceId ? `invoiceId: ${invoiceId}\n` : ''}tx: ${hash}`);
         } catch {}
       }
     } catch (e: any) {
@@ -748,6 +768,7 @@ async function main() {
     const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
     const defAmount = p.get('amount') || '';
     const defMemo = p.get('memo') || '';
+    const defInvoiceId = p.get('invoiceId') || '';
     const expParam = p.get('exp');
 
     // Tab: allow `tab=create` to open creator first
@@ -762,18 +783,20 @@ async function main() {
     toEl.value = defTo;
     amountEl.value = defAmount;
     memoEl.value = defMemo;
+    invoiceIdEl.value = defInvoiceId;
 
     // Invoice creator defaults from current values
     invToEl.value = defTo;
     invAmountEl.value = defAmount;
     invMemoEl.value = defMemo;
+    invInvoiceIdEl.value = defInvoiceId;
     if (invoiceExpTs) {
       const rem = Math.max(1, Math.floor((invoiceExpTs - Math.floor(Date.now() / 1000)) / 60));
       invExpMinEl.value = String(rem);
     } else {
       invExpMinEl.value = '0';
     }
-    invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo, invoiceExpTs) : '';
+    invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo, defInvoiceId, invoiceExpTs) : '';
     updateInvoiceButtons();
 
     openInCbw.href = buildCbwDappLink(location.href);
@@ -803,13 +826,14 @@ async function main() {
     const to = invToEl.value.trim();
     const amount = invAmountEl.value.trim();
     const memo = invMemoEl.value.trim();
+    const invoiceId = invInvoiceIdEl.value.trim();
     const expMinRaw = invExpMinEl.value.trim();
     const expMin = expMinRaw ? Number(expMinRaw) : 0;
     if (!isHexAddress(to)) return showErr('Invoice to が不正です。');
     if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
     if (!Number.isFinite(expMin) || expMin < 0) return showErr('有効期限（分）は0以上の数値で入力してください。');
     invoiceExpTs = expMin > 0 ? Math.floor(Date.now() / 1000) + Math.floor(expMin * 60) : null;
-    invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo, invoiceExpTs);
+    invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo, invoiceId, invoiceExpTs);
     updateInvoiceButtons();
     refresh();
     toast('請求リンクを生成しました');
@@ -837,6 +861,7 @@ async function main() {
     toEl.value = invToEl.value.trim();
     amountEl.value = invAmountEl.value.trim();
     memoEl.value = invMemoEl.value.trim();
+    invoiceIdEl.value = invInvoiceIdEl.value.trim();
     refresh();
   };
 
@@ -856,7 +881,8 @@ async function main() {
     const to = toEl.value.trim();
     const amount = amountEl.value.trim();
     const memo = memoEl.value.trim();
-    const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}`;
+    const invoiceId = invoiceIdEl.value.trim();
+    const text = `to: ${to}\namount(USDC): ${amount}${memo ? `\nmemo: ${memo}` : ''}${invoiceId ? `\ninvoiceId: ${invoiceId}` : ''}`;
     toast('コピー中…');
     try {
       await navigator.clipboard.writeText(text);
@@ -897,6 +923,7 @@ async function main() {
   toEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
   amountEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
   memoEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
+  invoiceIdEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
 
   init();
 }
