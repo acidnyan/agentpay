@@ -12,6 +12,15 @@ type LastTx = {
   status?: 'submitted' | 'confirmed';
 } | null;
 
+type PaymentRecord = {
+  ts: number;
+  txHash: string;
+  to: string;
+  amount: string;
+  memo?: string;
+  invoiceId?: string;
+};
+
 declare global {
   interface Window {
     __agentpay_last_tx?: LastTx;
@@ -75,6 +84,7 @@ function usdcToUnits(str: string): bigint | null {
 
 function buildShareUrl(to: string, amount: string, memo: string, invoiceId?: string): string {
   const u = new URL(location.href);
+  u.searchParams.delete('d');
   u.searchParams.set('to', to);
   u.searchParams.set('amount', amount);
   if (memo) u.searchParams.set('memo', memo);
@@ -142,6 +152,7 @@ async function main() {
             <input id="invoiceId" placeholder="inv-20260219-001" />
           </div>
         </div>
+        <div id="toChecksum" class="small" style="margin-top:4px"></div>
 
         <div class="btns">
           <button id="connect" class="primary">ウォレット接続</button>
@@ -149,6 +160,7 @@ async function main() {
           <button id="disconnect">切断</button>
           <button id="pay" class="ok" disabled>支払う（USDC送金）</button>
           <button id="copy" class="primary">コピー（宛先/金額/メモ）</button>
+          <button id="exportCsv">CSV出力</button>
           <a id="basescan" class="btn" target="_blank" rel="noreferrer">BaseScanで見る</a>
         </div>
 
@@ -221,6 +233,7 @@ async function main() {
 
         <div class="btns">
           <button id="gen" class="primary">請求リンク生成</button>
+          <button id="compact">短縮URL: ON</button>
           <button id="lock">ロック: OFF</button>
           <button id="apply">この請求をフォームに反映</button>
         </div>
@@ -271,6 +284,7 @@ async function main() {
   const amountEl = $('amount') as HTMLInputElement;
   const memoEl = $('memo') as HTMLInputElement;
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
+  const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const txEl = $('tx')!;
   const balEl = $('bal')!;
@@ -295,6 +309,7 @@ async function main() {
   const invExpMinEl = $('invExpMin') as HTMLInputElement;
   const invoiceUrlEl = $('invoiceUrl') as HTMLInputElement;
   const genBtn = $('gen') as HTMLButtonElement;
+  const compactBtn = $('compact') as HTMLButtonElement;
   const lockBtn = $('lock') as HTMLButtonElement;
   const applyBtn = $('apply') as HTMLButtonElement;
   const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
@@ -305,6 +320,7 @@ async function main() {
   const connectBtn = $('connect') as HTMLButtonElement;
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
   const copyBtn = $('copy') as HTMLButtonElement;
+  const exportCsvBtn = $('exportCsv') as HTMLButtonElement;
   const copyPageBtn = $('copyPage') as HTMLButtonElement;
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
 
@@ -325,7 +341,7 @@ async function main() {
       verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する',
       createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
       lblFlex: '支払い側で金額を編集', flexHint: 'ONで金額のみ編集可（宛先/メモは固定）。',
-      gen: '請求リンク生成', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く',
+      gen: '請求リンク生成', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く', exportCsv: 'CSV出力',
       pageUrlTitle: 'ページURL（このページのトップ）', pageUrlHint: 'パラメータ無しのURL。案内・ブックマーク用。',
       shareUrlTitle: '共有用リンク（現在のURL / パラメータ付き）', shareUrlHint: '請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。',
       modeFixed: 'モード: 固定金額（amount編集不可）', modeFlex: 'モード: 任意金額（amount編集可 / to,memo固定）',
@@ -352,7 +368,7 @@ async function main() {
       verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify',
       createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
       lblFlex: 'Allow payer to edit amount', flexHint: 'When ON, only amount is editable (to/memo locked).',
-      gen: 'Generate Invoice Link', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open',
+      gen: 'Generate Invoice Link', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open', exportCsv: 'Export CSV',
       pageUrlTitle: 'Page URL (top page)', pageUrlHint: 'URL without parameters. For guide/bookmark.',
       shareUrlTitle: 'Share URL (current URL with parameters)', shareUrlHint: 'For payment requests, prefer generated invoice URL above.',
       modeFixed: 'Mode: fixed amount (amount locked)', modeFlex: 'Mode: flexible amount (amount editable / to,memo locked)',
@@ -399,6 +415,7 @@ async function main() {
     basescanEl.textContent = tr('baseScan');
     payBtn.textContent = tr('pay');
     copyBtn.textContent = tr('copy');
+    exportCsvBtn.textContent = tr('exportCsv');
     verifyBtn.textContent = tr('verifyBtn');
     genBtn.textContent = tr('gen');
     applyBtn.textContent = tr('apply');
@@ -555,7 +572,39 @@ async function main() {
 
   let invoiceLocked = false;
   let flexAmount = false;
+  let compactMode = true;
   let invoiceExpTs: number | null = null;
+
+  function encodeCompact(payload: object): string {
+    const raw = JSON.stringify(payload);
+    return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function decodeCompact(s: string): any | null {
+    try {
+      const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+      const raw = decodeURIComponent(escape(atob(b64)));
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  function loadPaymentHistory(): PaymentRecord[] {
+    try {
+      const v = localStorage.getItem('agentpay_payments');
+      const arr = v ? JSON.parse(v) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function savePaymentHistory(rec: PaymentRecord) {
+    const arr = loadPaymentHistory();
+    arr.unshift(rec);
+    localStorage.setItem('agentpay_payments', JSON.stringify(arr.slice(0, 500)));
+  }
 
   function setLockUI() {
     lockBtn.textContent = `ロック: ${invoiceLocked ? 'ON' : 'OFF'}`;
@@ -565,12 +614,22 @@ async function main() {
     memoEl.readOnly = invoiceLocked;
 
     amtFlexBtn.textContent = flexAmount ? 'ON（任意金額）' : 'OFF（固定）';
+    compactBtn.textContent = compactMode ? '短縮URL: ON' : '短縮URL: OFF';
     modeHintEl.textContent = flexAmount ? tr('modeFlex') : tr('modeFixed');
   }
 
   function buildInvoiceUrl(to: string, amount: string, memo: string, invoiceId: string, expTs?: number | null): string {
     const u = new URL(location.href);
+    u.search = '';
     u.searchParams.set('tab', 'pay');
+    u.searchParams.set('lang', lang);
+
+    if (compactMode) {
+      const packed = encodeCompact({ t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
+      u.searchParams.set('d', packed);
+      return u.toString();
+    }
+
     u.searchParams.set('lock', '1');
     if (flexAmount) u.searchParams.set('flexAmount', '1');
     else u.searchParams.delete('flexAmount');
@@ -597,6 +656,15 @@ async function main() {
     showErr('');
 
     basescanEl.href = isHexAddress(to) ? `https://basescan.org/address/${to}` : 'https://basescan.org/';
+    if (isHexAddress(to)) {
+      try {
+        toChecksumEl.innerHTML = `checksum: <span class="mono">${ethers.getAddress(to)}</span>`;
+      } catch {
+        toChecksumEl.textContent = '';
+      }
+    } else {
+      toChecksumEl.textContent = '';
+    }
 
     const units = usdcToUnits(amount);
     const valid = isHexAddress(to) && units !== null;
@@ -786,6 +854,7 @@ async function main() {
 
       showOk(`支払い完了: ${hash}`);
       setMsg('confirmed');
+      savePaymentHistory({ ts: Date.now(), txHash: hash, to, amount, memo, invoiceId });
       await updateUsdcBalance();
 
       if (memo || invoiceId) {
@@ -880,19 +949,23 @@ async function main() {
     const langParam = p.get('lang');
     const savedLang = localStorage.getItem('agentpay_lang');
     lang = (langParam === 'en' || langParam === 'ja') ? langParam : ((savedLang === 'en' || savedLang === 'ja') ? savedLang : 'ja');
-    const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
-    const defAmount = p.get('amount') || '';
-    const defMemo = p.get('memo') || '';
-    const defInvoiceId = p.get('invoiceId') || '';
-    const expParam = p.get('exp');
+    const dParam = p.get('d');
+    const unpacked = dParam ? decodeCompact(dParam) : null;
+
+    const defTo = unpacked?.t || p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
+    const defAmount = unpacked?.a || p.get('amount') || '';
+    const defMemo = unpacked?.m || p.get('memo') || '';
+    const defInvoiceId = unpacked?.i || p.get('invoiceId') || '';
+    const expParam = String(unpacked?.e || p.get('exp') || '');
 
     // Tab: allow `tab=create` to open creator first
     const tabParam = p.get('tab');
     setTab(tabParam === 'create' ? 'create' : 'pay');
 
     // Lock via URL param
-    invoiceLocked = p.get('lock') === '1';
-    flexAmount = p.get('flexAmount') === '1';
+    compactMode = p.get('compact') !== '0';
+    invoiceLocked = unpacked ? !!unpacked.l : p.get('lock') === '1';
+    flexAmount = unpacked ? !!unpacked.f : p.get('flexAmount') === '1';
     invoiceExpTs = expParam && /^\d+$/.test(expParam) ? Number(expParam) : null;
 
     toEl.value = defTo;
@@ -983,6 +1056,11 @@ async function main() {
     setLockUI();
   };
 
+  compactBtn.onclick = () => {
+    compactMode = !compactMode;
+    setLockUI();
+  };
+
   lockBtn.onclick = () => {
     invoiceLocked = !invoiceLocked;
     setLockUI();
@@ -1022,6 +1100,25 @@ async function main() {
       showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
       toast('コピー失敗');
     }
+  };
+
+  exportCsvBtn.onclick = () => {
+    const rows = loadPaymentHistory();
+    if (!rows.length) {
+      toast(lang === 'ja' ? '履歴がありません' : 'No records yet');
+      return;
+    }
+    const esc = (v: string) => `"${String(v || '').replace(/"/g, '""')}"`;
+    const header = ['timestamp', 'txHash', 'to', 'amountUSDC', 'memo', 'invoiceId'];
+    const body = rows.map((r) => [new Date(r.ts).toISOString(), r.txHash, r.to, r.amount, r.memo || '', r.invoiceId || '']);
+    const csv = [header, ...body].map((line) => line.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agentpay-payments-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   copyPageBtn.onclick = async () => {
