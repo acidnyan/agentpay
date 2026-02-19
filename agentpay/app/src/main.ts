@@ -362,6 +362,7 @@ async function main() {
         <div class="row">
           <input id="invoiceUrl" class="mono" readonly />
           <button id="copyInvoice">URLコピー</button>
+          <button id="shareInvoice">共有</button>
           <a id="openInvoice" class="btn" target="_blank" rel="noreferrer">開く</a>
         </div>
         <div id="lockHint" class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
@@ -458,6 +459,7 @@ async function main() {
   const tplLoadBtn = $('tplLoad') as HTMLButtonElement;
   const tplDeleteBtn = $('tplDelete') as HTMLButtonElement;
   const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
+  const shareInvoiceBtn = $('shareInvoice') as HTMLButtonElement;
   const openInvoiceEl = $('openInvoice') as HTMLAnchorElement;
   const modeHintEl = $('modeHint')!;
   const amtFlexBtn = $('amtFlex') as HTMLButtonElement;
@@ -499,7 +501,7 @@ async function main() {
       verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する', verifyCopy: '検証結果コピー',
       createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
       lblFlex: '支払い側で金額を編集', flexHint: 'ONで金額のみ編集可（宛先/メモは固定）。',
-      gen: '請求リンク生成', signInvoice: '請求内容に署名', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く', exportCsv: 'CSV出力',
+      gen: '請求リンク生成', signInvoice: '請求内容に署名', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', share: '共有', open: '開く', exportCsv: 'CSV出力',
       pageUrlTitle: 'ページURL（このページのトップ）', pageUrlHint: 'パラメータ無しのURL。案内・ブックマーク用。',
       shareUrlTitle: '共有用リンク（現在のURL / パラメータ付き）', shareUrlHint: '請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。',
       modeFixed: 'モード: 固定金額（amount編集不可）', modeFlex: 'モード: 任意金額（amount編集可 / to,memo固定）',
@@ -566,7 +568,7 @@ async function main() {
       verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify', verifyCopy: 'Copy verification',
       createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
       lblFlex: 'Allow payer to edit amount', flexHint: 'When ON, only amount is editable (to/memo locked).',
-      gen: 'Generate Invoice Link', signInvoice: 'Sign invoice payload', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open', exportCsv: 'Export CSV',
+      gen: 'Generate Invoice Link', signInvoice: 'Sign invoice payload', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', share: 'Share', open: 'Open', exportCsv: 'Export CSV',
       pageUrlTitle: 'Page URL (top page)', pageUrlHint: 'URL without parameters. For guide/bookmark.',
       shareUrlTitle: 'Share URL (current URL with parameters)', shareUrlHint: 'For payment requests, prefer generated invoice URL above.',
       modeFixed: 'Mode: fixed amount (amount locked)', modeFlex: 'Mode: flexible amount (amount editable / to,memo locked)',
@@ -686,6 +688,7 @@ async function main() {
     tplLoadBtn.textContent = tr('tplLoad');
     tplDeleteBtn.textContent = tr('tplDelete');
     copyInvoiceBtn.textContent = tr('copyUrl');
+    shareInvoiceBtn.textContent = tr('share');
     copyPageBtn.textContent = tr('copyUrl');
     copyShareBtn.textContent = tr('copyUrl');
     openInvoiceEl.textContent = tr('open');
@@ -1870,6 +1873,27 @@ async function main() {
     } catch {
       showErr('コピーに失敗しました（ブラウザ権限の可能性）。');
       toast('コピー失敗');
+    }
+  };
+
+  shareInvoiceBtn.onclick = async () => {
+    if (!invoiceUrlEl.value) return;
+    const title = `AgentPay ${chainCfg().label} ${tokenCfg().symbol}`;
+    const text = lang === 'ja'
+      ? `請求リンクです（${chainCfg().label} / ${tokenCfg().symbol}）`
+      : `Invoice link (${chainCfg().label} / ${tokenCfg().symbol})`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url: invoiceUrlEl.value });
+        toast(lang === 'ja' ? '共有ダイアログを開きました' : 'Share dialog opened');
+      } else {
+        await navigator.clipboard.writeText(invoiceUrlEl.value);
+        toast(lang === 'ja' ? '共有API未対応のためURLをコピーしました' : 'Web Share unavailable; copied URL');
+      }
+    } catch (e: any) {
+      // Ignore user-cancel silently
+      if (e?.name === 'AbortError') return;
+      showErr(e?.message || String(e));
     }
   };
 
