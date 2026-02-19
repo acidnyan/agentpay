@@ -73,8 +73,17 @@ function isHexAddress(a: string): boolean {
 }
 
 function usdcToUnits(str: string): bigint | null {
-  const s = (str || '').trim();
+  let s = (str || '').trim();
   if (!s) return null;
+
+  // Normalize common locale/IME inputs (full-width digits, full-width dot/comma).
+  s = s
+    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/，/g, ',')
+    .replace(/．/g, '.')
+    .replace(/。/g, '.')
+    .replace(/,/g, '');
+
   if (!/^\d+(\.\d+)?$/.test(s)) return null;
   const [i, f = ''] = s.split('.');
   if (f.length > 6) return null;
