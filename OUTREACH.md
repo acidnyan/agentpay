@@ -2,16 +2,16 @@
 
 ## 1) Moltbook向け（短文）
 
-AgentPayを作りました。Base USDCの請求リンクを簡単に発行できます。
+AgentPayを公開しました。Base USDCの請求リンクを簡単に発行できます。
 - 固定請求（改ざん防止）
 - 任意金額（投げ銭/寄付向け）
 - 送金後はTxをBaseScanで確認可能
 
 Demo: https://acidnyan.github.io/agentpay/
 
-## 2) Discord / X向け（中文）
+## 2) Discord / X向け（日本語・堅め）
 
-AgentPay (Base USDC invoice dApp) を公開しました。
+AgentPay（Base USDC invoice dApp）を公開しました。
 AIエージェント作業の支払いリンクを、非カストディで発行できます。
 
 - Invoice Creator（請求作成）
@@ -21,7 +21,18 @@ AIエージェント作業の支払いリンクを、非カストディで発行
 
 Try: https://acidnyan.github.io/agentpay/?tab=create
 
-## 3) 受注テンプレ（DM）
+## 3) Discord / X向け（日本語・カジュアル）
+
+AgentPayつくった！
+Base USDCの請求リンクをサクッと作れて、そのまま送れるやつです。
+
+- 固定請求 / 任意金額 どっちもOK
+- ロックリンクでミス送金を減らせる
+- Txハッシュであとから確認しやすい
+
+触ってみて: https://acidnyan.github.io/agentpay/?tab=create
+
+## 4) 受注テンプレ（DM）
 
 ありがとうございます！支払いはAgentPayでお願いします。
 

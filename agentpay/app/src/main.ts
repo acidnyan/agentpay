@@ -147,6 +147,14 @@ async function main() {
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
 
         <div class="sep"></div>
+        <div class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合）</div>
+        <div class="row">
+          <input id="verifyTx" class="mono" placeholder="0x...（66文字）" />
+          <button id="verifyBtn">確認する</button>
+        </div>
+        <div id="verifyResult" class="small" style="margin-top:8px"></div>
+
+        <div class="sep"></div>
         <div class="muted">
           このページは <span class="mono">Base</span> 上の <span class="mono">USDC</span> 支払い用です（資金を預かりません）。
           送金は不可逆なので、宛先と金額を確認してから実行してください。
@@ -190,10 +198,12 @@ async function main() {
           <button id="lock">ロック: OFF</button>
           <button id="apply">この請求をフォームに反映</button>
         </div>
+        <div class="small" id="modeHint" style="margin-top:8px">モード: 固定金額（amount編集不可）</div>
         <div class="muted" style="margin-top:10px">生成された請求リンク</div>
         <div class="row">
           <input id="invoiceUrl" class="mono" readonly />
           <button id="copyInvoice">URLコピー</button>
+          <a id="openInvoice" class="btn" target="_blank" rel="noreferrer">開く</a>
         </div>
         <div class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
       </div>
@@ -235,6 +245,9 @@ async function main() {
   const balEl = $('bal')!;
   const errEl = $('err')!;
   const okEl = $('ok')!;
+  const verifyTxEl = $('verifyTx') as HTMLInputElement;
+  const verifyBtn = $('verifyBtn') as HTMLButtonElement;
+  const verifyResultEl = $('verifyResult')!;
   const netPill = $('netPill')!;
   const payBtn = $('pay') as HTMLButtonElement;
   const pageUrlEl = $('pageUrl') as HTMLInputElement;
@@ -251,6 +264,8 @@ async function main() {
   const lockBtn = $('lock') as HTMLButtonElement;
   const applyBtn = $('apply') as HTMLButtonElement;
   const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
+  const openInvoiceEl = $('openInvoice') as HTMLAnchorElement;
+  const modeHintEl = $('modeHint')!;
   const amtFlexBtn = $('amtFlex') as HTMLButtonElement;
 
   const connectBtn = $('connect') as HTMLButtonElement;
@@ -414,6 +429,9 @@ async function main() {
     memoEl.readOnly = invoiceLocked;
 
     amtFlexBtn.textContent = flexAmount ? 'ON（任意金額）' : 'OFF（固定）';
+    modeHintEl.textContent = flexAmount
+      ? 'モード: 任意金額（amount編集可 / to,memo固定）'
+      : 'モード: 固定金額（amount編集不可）';
   }
 
   function buildInvoiceUrl(to: string, amount: string, memo: string): string {
@@ -618,6 +636,46 @@ async function main() {
     }
   }
 
+  function isTxHash(h: string): boolean {
+    return /^0x[0-9a-fA-F]{64}$/.test(h);
+  }
+
+  async function verifyTx() {
+    const hash = verifyTxEl.value.trim();
+    if (!isTxHash(hash)) {
+      verifyResultEl.innerHTML = '<span class="warn">Txハッシュ形式が不正です。</span>';
+      return;
+    }
+
+    verifyResultEl.textContent = '照合中…';
+    try {
+      const body = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getTransactionReceipt',
+        params: [hash],
+      };
+      const res = await fetch('https://mainnet.base.org', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      const rcpt = json?.result;
+      if (!rcpt) {
+        verifyResultEl.innerHTML = `未確認（pending か未検出）: <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScanで確認</a>`;
+        return;
+      }
+      const ok = rcpt.status === '0x1';
+      const usdcTouched = Array.isArray(rcpt.logs) && rcpt.logs.some((l: any) => (l?.address || '').toLowerCase() === USDC.toLowerCase());
+      const statusText = ok ? '成功' : '失敗';
+      const usdcText = usdcTouched ? 'USDC transferログあり' : 'USDCログ未検出';
+      verifyResultEl.innerHTML = `照合結果: <b>${statusText}</b> / ${usdcText} / block: <span class="mono">${parseInt(rcpt.blockNumber || '0x0', 16)}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
+    } catch (e: any) {
+      verifyResultEl.innerHTML = `<span class="warn">照合失敗: ${e?.message || String(e)}</span>`;
+    }
+  }
+
   function init() {
     const p = new URL(location.href).searchParams;
     const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
@@ -641,8 +699,7 @@ async function main() {
     invAmountEl.value = defAmount;
     invMemoEl.value = defMemo;
     invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo) : '';
-    // disable copy if empty
-    copyInvoiceBtn.disabled = !invoiceUrlEl.value;
+    updateInvoiceButtons();
 
     openInCbw.href = buildCbwDappLink(location.href);
 
@@ -660,7 +717,11 @@ async function main() {
 
   // Invoice creator actions
   function updateInvoiceButtons() {
-    copyInvoiceBtn.disabled = !invoiceUrlEl.value;
+    const has = !!invoiceUrlEl.value;
+    copyInvoiceBtn.disabled = !has;
+    openInvoiceEl.style.pointerEvents = has ? 'auto' : 'none';
+    openInvoiceEl.style.opacity = has ? '1' : '.55';
+    openInvoiceEl.href = has ? invoiceUrlEl.value : '#';
   }
 
   genBtn.onclick = async () => {
@@ -747,6 +808,11 @@ async function main() {
       toast('コピー失敗');
     }
   };
+
+  verifyBtn.onclick = () => void verifyTx();
+  verifyTxEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') void verifyTx();
+  });
 
   toEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
   amountEl.addEventListener('input', () => { if (!invoiceLocked) refresh(); });
