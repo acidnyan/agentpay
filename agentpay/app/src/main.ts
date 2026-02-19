@@ -217,6 +217,7 @@ async function main() {
           </div>
         </div>
         <div id="chainWarn" class="warn" style="margin-top:6px;display:none"></div>
+        <div id="sigWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="toChecksum" class="small" style="margin-top:4px"></div>
 
         <div class="btns">
@@ -392,6 +393,7 @@ async function main() {
   const memoEl = $('memo') as HTMLInputElement;
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const chainWarnEl = $('chainWarn')!;
+  const sigWarnEl = $('sigWarn')!;
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const diagEl = $('diag')!;
@@ -454,6 +456,7 @@ async function main() {
   let currentChain: keyof typeof CHAIN_CONFIGS = 'base';
   let invoiceContextChain: keyof typeof CHAIN_CONFIGS | null = null;
   let hasInvoiceContext = false;
+  let invoiceSigMismatch = false;
   let payPanelInitialized = false;
   let createPanelInitialized = false;
 
@@ -517,6 +520,7 @@ async function main() {
       paySummaryCopy: 'サマリーをコピー',
       noPaySummary: 'まだ支払いサマリーがありません。',
       chainMismatchWarn: 'この請求リンクは {chain} 向けです。現在は {current} が選択されています。',
+      sigMismatchWarn: '請求リンクの改ざんを検知しました（署名不一致）。',
       diagTitle: '起動診断',
       diagWallet: 'ウォレットAPI',
       diagRpc: 'Base RPC',
@@ -581,6 +585,7 @@ async function main() {
       paySummaryCopy: 'Copy summary',
       noPaySummary: 'No payment summary yet.',
       chainMismatchWarn: 'This invoice link is for {chain}. Current selection is {current}.',
+      sigMismatchWarn: 'Invoice link appears tampered (signature mismatch).',
       diagTitle: 'Startup diagnostics',
       diagWallet: 'Wallet API',
       diagRpc: 'Base RPC',
@@ -852,6 +857,20 @@ async function main() {
   let compactMode = true;
   let invoiceExpTs: number | null = null;
 
+  function makeInvoiceSig(payload: { chain: string; to: string; amount: string; memo?: string; invoiceId?: string; exp?: number; lock?: number; flex?: number; }) {
+    const canonical = JSON.stringify({
+      c: payload.chain,
+      t: (payload.to || '').toLowerCase(),
+      a: String(payload.amount || ''),
+      m: payload.memo || '',
+      i: payload.invoiceId || '',
+      e: Number(payload.exp || 0),
+      l: Number(payload.lock || 0),
+      f: Number(payload.flex || 0),
+    });
+    return ethers.keccak256(ethers.toUtf8Bytes(canonical));
+  }
+
   function encodeCompact(payload: object): string {
     const raw = JSON.stringify(payload);
     return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -1061,9 +1080,21 @@ async function main() {
     u.searchParams.set('lang', lang);
     u.searchParams.set('chain', chainCfg().key);
 
+    const sig = makeInvoiceSig({
+      chain: chainCfg().key,
+      to,
+      amount,
+      memo,
+      invoiceId,
+      exp: expTs ? Math.floor(expTs) : 0,
+      lock: 1,
+      flex: flexAmount ? 1 : 0,
+    });
+
     if (compactMode) {
       const packed = encodeCompact({ t: to, a: amount, m: memo || '', i: invoiceId || '', l: 1, f: flexAmount ? 1 : 0, e: expTs ? Math.floor(expTs) : 0 });
       u.searchParams.set('d', packed);
+      u.searchParams.set('sig', sig);
       return u.toString();
     }
 
@@ -1081,6 +1112,7 @@ async function main() {
     if (expTs && Number.isFinite(expTs) && expTs > 0) u.searchParams.set('exp', String(Math.floor(expTs)));
     else u.searchParams.delete('exp');
 
+    u.searchParams.set('sig', sig);
     return u.toString();
   }
 
@@ -1117,6 +1149,14 @@ async function main() {
       chainWarnEl.textContent = '';
     }
 
+    if (invoiceSigMismatch) {
+      sigWarnEl.style.display = 'block';
+      sigWarnEl.textContent = tr('sigMismatchWarn');
+    } else {
+      sigWarnEl.style.display = 'none';
+      sigWarnEl.textContent = '';
+    }
+
     // Page URL (no params)
     pageUrlEl.value = `${location.origin}${location.pathname}`;
 
@@ -1150,7 +1190,7 @@ async function main() {
       expStateEl.textContent = tr('expNoLimit');
     }
 
-    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired && !chainMismatch);
+    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired && !chainMismatch && !invoiceSigMismatch);
 
     // Tx UI
     if (!window.__agentpay_last_tx) {
@@ -1200,7 +1240,8 @@ async function main() {
       );
     }
 
-    if (chainMismatch) showErr(chainWarnEl.textContent || tr('chainMismatchWarn').replace('{chain}', '').replace('{current}', ''));
+    if (invoiceSigMismatch) showErr(tr('sigMismatchWarn'));
+    else if (chainMismatch) showErr(chainWarnEl.textContent || tr('chainMismatchWarn').replace('{chain}', '').replace('{current}', ''));
     else if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr(tr('errExpired'));
     else if (!isHexAddress(to)) showErr(tr('errInvalidTo'));
     else if (units === null) showErr(tr('errInvalidAmount'));
@@ -1278,6 +1319,7 @@ async function main() {
 
     if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
     if (units === null) return showErr('金額が不正です。');
+    if (invoiceSigMismatch) return showErr(tr('sigMismatchWarn'));
     if (hasInvoiceContext && invoiceContextChain && invoiceContextChain !== currentChain) {
       const tpl = tr('chainMismatchWarn');
       return showErr(tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label));
@@ -1436,6 +1478,7 @@ async function main() {
     if (chainParam === 'eth' || chainParam === 'base') currentChain = chainParam;
 
     const dParam = p.get('d');
+    const sigParam = p.get('sig') || '';
     hasInvoiceContext = !!(dParam || p.get('to') || p.get('amount'));
     invoiceContextChain = (chainParam === 'eth' || chainParam === 'base') ? chainParam : null;
     const unpacked = dParam ? decodeCompact(dParam) : null;
@@ -1455,6 +1498,22 @@ async function main() {
     invoiceLocked = unpacked ? !!unpacked.l : p.get('lock') === '1';
     flexAmount = unpacked ? !!unpacked.f : p.get('flexAmount') === '1';
     invoiceExpTs = expParam && /^\d+$/.test(expParam) ? Number(expParam) : null;
+
+    if (hasInvoiceContext && invoiceContextChain && sigParam) {
+      const expectedSig = makeInvoiceSig({
+        chain: invoiceContextChain,
+        to: defTo,
+        amount: defAmount,
+        memo: defMemo,
+        invoiceId: defInvoiceId,
+        exp: invoiceExpTs ? Math.floor(invoiceExpTs) : 0,
+        lock: invoiceLocked ? 1 : 0,
+        flex: flexAmount ? 1 : 0,
+      });
+      invoiceSigMismatch = expectedSig.toLowerCase() !== sigParam.toLowerCase();
+    } else {
+      invoiceSigMismatch = false;
+    }
 
     toEl.value = defTo;
     amountEl.value = defAmount;
