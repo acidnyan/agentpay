@@ -41,6 +41,8 @@ type LastTx = {
 type PaymentRecord = {
   ts: number;
   txHash: string;
+  chain: string;
+  token: string;
   to: string;
   amount: string;
   memo?: string;
@@ -559,8 +561,8 @@ async function main() {
       paySummaryTitle: '直近の支払いサマリー',
       paySummaryCopy: 'サマリーをコピー',
       noPaySummary: 'まだ支払いサマリーがありません。',
-      chainMismatchWarn: 'この請求リンクは {chain} 向けです。現在は {current} が選択されています。',
-      tokenMismatchWarn: 'この請求リンクは {token} 向けです。現在は {current} が選択されています。',
+      chainMismatchWarn: 'チェーン不一致: 請求={chain} / 現在={current}',
+      tokenMismatchWarn: 'トークン不一致: 請求={token} / 現在={current}',
       sigMismatchWarn: '請求リンクの改ざんを検知しました（署名不一致）。',
       issuerVerified: '発行者署名: 検証済み',
       diagTitle: '起動診断',
@@ -629,8 +631,8 @@ async function main() {
       paySummaryTitle: 'Latest payment summary',
       paySummaryCopy: 'Copy summary',
       noPaySummary: 'No payment summary yet.',
-      chainMismatchWarn: 'This invoice link is for {chain}. Current selection is {current}.',
-      tokenMismatchWarn: 'This invoice link is for {token}. Current selection is {current}.',
+      chainMismatchWarn: 'Chain mismatch: invoice={chain} / current={current}',
+      tokenMismatchWarn: 'Token mismatch: invoice={token} / current={current}',
       sigMismatchWarn: 'Invoice link appears tampered (signature mismatch).',
       issuerVerified: 'Issuer signature: verified',
       diagTitle: 'Startup diagnostics',
@@ -1479,7 +1481,7 @@ async function main() {
       showOk(`支払い完了: ${hash}`);
       setMsg('confirmed');
       const paidAt = Date.now();
-      savePaymentHistory({ ts: paidAt, txHash: hash, to, amount, memo, invoiceId });
+      savePaymentHistory({ ts: paidAt, txHash: hash, chain: chainCfg().key, token: currentTokenKey, to, amount, memo, invoiceId });
       saveLastPaymentSummary({ ts: paidAt, txHash: hash, to, amount, memo, invoiceId });
       renderLastPaymentSummary();
       await updateUsdcBalance();
@@ -1570,9 +1572,11 @@ async function main() {
       verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${block}</span> / <a target="_blank" rel="noreferrer" href="${chainCfg().explorer}/tx/${hash}">Explorer</a>`;
       lastVerifyText = [
         `tx: ${hash}`,
+        `chain: ${chainCfg().key}`,
+        `token: ${currentTokenKey}`,
         `verify: ${verifyOk ? 'ok' : 'review'}`,
         `execution: ${ok ? 'success' : 'failed'}`,
-        `usdc_transfer_log: ${foundTransfer ? 'yes' : 'no'}`,
+        `token_transfer_log: ${foundTransfer ? 'yes' : 'no'}`,
         `to_match: ${matchedTo ? 'yes' : 'no'}`,
         `amount_match: ${matchedAmount ? 'yes' : 'no'}`,
         `block: ${block}`,
@@ -1981,8 +1985,8 @@ async function main() {
     }
 
     const esc = (v: string) => `"${String(v || '').replace(/"/g, '""')}"`;
-    const header = ['timestamp', 'txHash', 'to', `amount${tokenCfg().symbol}`, 'memo', 'invoiceId'];
-    const body = rows.map((r) => [new Date(r.ts).toISOString(), r.txHash, r.to, r.amount, r.memo || '', r.invoiceId || '']);
+    const header = ['timestamp', 'txHash', 'chain', 'token', 'to', 'amount', 'memo', 'invoiceId'];
+    const body = rows.map((r) => [new Date(r.ts).toISOString(), r.txHash, r.chain || '', r.token || '', r.to, r.amount, r.memo || '', r.invoiceId || '']);
     const csv = [header, ...body].map((line) => line.map(esc).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
