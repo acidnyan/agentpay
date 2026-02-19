@@ -231,6 +231,7 @@ async function main() {
           </div>
         </div>
         <div id="chainWarn" class="warn" style="margin-top:6px;display:none"></div>
+        <div id="tokenWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="sigWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="issuerBadge" class="small" style="margin-top:6px;display:none"></div>
         <div id="toChecksum" class="small" style="margin-top:4px"></div>
@@ -411,6 +412,7 @@ async function main() {
   const memoEl = $('memo') as HTMLInputElement;
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const chainWarnEl = $('chainWarn')!;
+  const tokenWarnEl = $('tokenWarn')!;
   const sigWarnEl = $('sigWarn')!;
   const issuerBadgeEl = $('issuerBadge')!;
   const toChecksumEl = $('toChecksum')!;
@@ -545,6 +547,7 @@ async function main() {
       paySummaryCopy: 'サマリーをコピー',
       noPaySummary: 'まだ支払いサマリーがありません。',
       chainMismatchWarn: 'この請求リンクは {chain} 向けです。現在は {current} が選択されています。',
+      tokenMismatchWarn: 'この請求リンクは {token} 向けです。現在は {current} が選択されています。',
       sigMismatchWarn: '請求リンクの改ざんを検知しました（署名不一致）。',
       issuerVerified: '発行者署名: 検証済み',
       diagTitle: '起動診断',
@@ -611,6 +614,7 @@ async function main() {
       paySummaryCopy: 'Copy summary',
       noPaySummary: 'No payment summary yet.',
       chainMismatchWarn: 'This invoice link is for {chain}. Current selection is {current}.',
+      tokenMismatchWarn: 'This invoice link is for {token}. Current selection is {current}.',
       sigMismatchWarn: 'Invoice link appears tampered (signature mismatch).',
       issuerVerified: 'Issuer signature: verified',
       diagTitle: 'Startup diagnostics',
@@ -1207,6 +1211,7 @@ async function main() {
     const valid = isHexAddress(to) && units !== null;
 
     const chainMismatch = hasInvoiceContext && !!invoiceContextChain && invoiceContextChain !== currentChain;
+    const tokenMismatch = hasInvoiceContext && !!invoiceContextToken && invoiceContextToken !== currentTokenKey;
     if (chainMismatch && invoiceContextChain) {
       const tpl = tr('chainMismatchWarn');
       const msg = tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label);
@@ -1215,6 +1220,16 @@ async function main() {
     } else {
       chainWarnEl.style.display = 'none';
       chainWarnEl.textContent = '';
+    }
+
+    if (tokenMismatch && invoiceContextToken) {
+      const tpl = tr('tokenMismatchWarn');
+      const msg = tpl.replace('{token}', invoiceContextToken.toUpperCase()).replace('{current}', currentTokenKey.toUpperCase());
+      tokenWarnEl.style.display = 'block';
+      tokenWarnEl.textContent = msg;
+    } else {
+      tokenWarnEl.style.display = 'none';
+      tokenWarnEl.textContent = '';
     }
 
     if (invoiceSigMismatch) {
@@ -1267,7 +1282,7 @@ async function main() {
       expStateEl.textContent = tr('expNoLimit');
     }
 
-    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired && !chainMismatch && !invoiceSigMismatch);
+    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired && !chainMismatch && !tokenMismatch && !invoiceSigMismatch);
 
     // Tx UI
     if (!window.__agentpay_last_tx) {
@@ -1319,6 +1334,7 @@ async function main() {
 
     if (invoiceSigMismatch) showErr(tr('sigMismatchWarn'));
     else if (chainMismatch) showErr(chainWarnEl.textContent || tr('chainMismatchWarn').replace('{chain}', '').replace('{current}', ''));
+    else if (tokenMismatch) showErr(tokenWarnEl.textContent || tr('tokenMismatchWarn').replace('{token}', '').replace('{current}', ''));
     else if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr(tr('errExpired'));
     else if (!isHexAddress(to)) showErr(tr('errInvalidTo'));
     else if (units === null) showErr(tr('errInvalidAmount'));
@@ -1400,6 +1416,10 @@ async function main() {
     if (hasInvoiceContext && invoiceContextChain && invoiceContextChain !== currentChain) {
       const tpl = tr('chainMismatchWarn');
       return showErr(tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label));
+    }
+    if (hasInvoiceContext && invoiceContextToken && invoiceContextToken !== currentTokenKey) {
+      const tpl = tr('tokenMismatchWarn');
+      return showErr(tpl.replace('{token}', invoiceContextToken.toUpperCase()).replace('{current}', currentTokenKey.toUpperCase()));
     }
     if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) return showErr('この請求リンクは期限切れです。');
     if (usdcBalanceUnits < units) return showErr('USDC残高が不足しています。');
