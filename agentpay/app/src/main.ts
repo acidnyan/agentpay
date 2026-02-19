@@ -21,6 +21,17 @@ type PaymentRecord = {
   invoiceId?: string;
 };
 
+type InvoiceTemplate = {
+  name: string;
+  to: string;
+  amount: string;
+  memo?: string;
+  invoiceId?: string;
+  expMin?: number;
+  flexAmount?: boolean;
+  compactMode?: boolean;
+};
+
 declare global {
   interface Window {
     __agentpay_last_tx?: LastTx;
@@ -269,6 +280,21 @@ async function main() {
           <button id="lock">ロック: OFF</button>
           <button id="apply">この請求をフォームに反映</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <div class="col" style="min-width:220px">
+            <label id="lblTplName">テンプレ名</label>
+            <input id="tplName" placeholder="client-a-monthly" />
+          </div>
+          <div class="col" style="min-width:220px">
+            <label id="lblTplSelect">保存済みテンプレ</label>
+            <select id="tplSelect" style="width:100%;box-sizing:border-box;background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:10px 12px;font-size:14px"></select>
+          </div>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <button id="tplSave">テンプレ保存</button>
+          <button id="tplLoad">テンプレ読込</button>
+          <button id="tplDelete">テンプレ削除</button>
+        </div>
         <div class="small" id="modeHint" style="margin-top:8px">モード: 固定金額（amount編集不可）</div>
         <div id="invoiceGeneratedLabel" class="muted" style="margin-top:10px">生成された請求リンク</div>
         <div class="row">
@@ -346,6 +372,11 @@ async function main() {
   const compactBtn = $('compact') as HTMLButtonElement;
   const lockBtn = $('lock') as HTMLButtonElement;
   const applyBtn = $('apply') as HTMLButtonElement;
+  const tplNameEl = $('tplName') as HTMLInputElement;
+  const tplSelectEl = $('tplSelect') as HTMLSelectElement;
+  const tplSaveBtn = $('tplSave') as HTMLButtonElement;
+  const tplLoadBtn = $('tplLoad') as HTMLButtonElement;
+  const tplDeleteBtn = $('tplDelete') as HTMLButtonElement;
   const copyInvoiceBtn = $('copyInvoice') as HTMLButtonElement;
   const openInvoiceEl = $('openInvoice') as HTMLAnchorElement;
   const modeHintEl = $('modeHint')!;
@@ -412,6 +443,12 @@ async function main() {
       checkAmount: '金額形式',
       checkBalance: 'USDC残高',
       checkExpiry: '有効期限内',
+      lblTplName: 'テンプレ名',
+      lblTplSelect: '保存済みテンプレ',
+      tplSave: 'テンプレ保存',
+      tplLoad: 'テンプレ読込',
+      tplDelete: 'テンプレ削除',
+      tplNone: '(テンプレなし)',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -458,6 +495,12 @@ async function main() {
       checkAmount: 'Amount format',
       checkBalance: 'USDC balance',
       checkExpiry: 'Not expired',
+      lblTplName: 'Template name',
+      lblTplSelect: 'Saved templates',
+      tplSave: 'Save template',
+      tplLoad: 'Load template',
+      tplDelete: 'Delete template',
+      tplNone: '(no templates)',
     }
   } as const;
 
@@ -479,6 +522,7 @@ async function main() {
       pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
       footer1: tr('footer1'), footer2: tr('footer2'),
       lblCsvFrom: tr('lblCsvFrom'), lblCsvTo: tr('lblCsvTo'), lblCsvSort: tr('lblCsvSort'), lockHint: tr('lockHint'),
+      lblTplName: tr('lblTplName'), lblTplSelect: tr('lblTplSelect'),
     };
     Object.entries(textMap).forEach(([id, text]) => {
       const n = document.getElementById(id);
@@ -495,6 +539,9 @@ async function main() {
     verifyBtn.textContent = tr('verifyBtn');
     genBtn.textContent = tr('gen');
     applyBtn.textContent = tr('apply');
+    tplSaveBtn.textContent = tr('tplSave');
+    tplLoadBtn.textContent = tr('tplLoad');
+    tplDeleteBtn.textContent = tr('tplDelete');
     copyInvoiceBtn.textContent = tr('copyUrl');
     copyPageBtn.textContent = tr('copyUrl');
     copyShareBtn.textContent = tr('copyUrl');
@@ -509,6 +556,9 @@ async function main() {
       opts[2].text = tr('sortTimeDesc');
       opts[3].text = tr('sortTimeAsc');
     }
+
+    const sel = tplSelectEl.value;
+    refreshTemplateSelect(sel);
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -689,6 +739,39 @@ async function main() {
     const arr = loadPaymentHistory();
     arr.unshift(rec);
     localStorage.setItem('agentpay_payments', JSON.stringify(arr.slice(0, 500)));
+  }
+
+  function loadTemplates(): InvoiceTemplate[] {
+    try {
+      const v = localStorage.getItem('agentpay_templates');
+      const arr = v ? JSON.parse(v) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveTemplates(arr: InvoiceTemplate[]) {
+    localStorage.setItem('agentpay_templates', JSON.stringify(arr.slice(0, 100)));
+  }
+
+  function refreshTemplateSelect(selected?: string) {
+    const list = loadTemplates();
+    tplSelectEl.innerHTML = '';
+    if (!list.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.text = tr('tplNone');
+      tplSelectEl.appendChild(opt);
+      return;
+    }
+    list.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.name;
+      opt.text = t.name;
+      tplSelectEl.appendChild(opt);
+    });
+    if (selected) tplSelectEl.value = selected;
   }
 
   function setLockUI() {
@@ -1083,6 +1166,7 @@ async function main() {
     openInCbw.href = buildCbwDappLink(location.href);
 
     applyI18n();
+    refreshTemplateSelect();
     setLockUI();
     refresh();
     setPill();
@@ -1174,6 +1258,58 @@ async function main() {
     memoEl.value = invMemoEl.value.trim();
     invoiceIdEl.value = invInvoiceIdEl.value.trim();
     refresh();
+  };
+
+  tplSaveBtn.onclick = () => {
+    const name = tplNameEl.value.trim();
+    if (!name) {
+      showErr(lang === 'ja' ? 'テンプレ名を入力してください。' : 'Please enter template name.');
+      return;
+    }
+    const expMinRaw = invExpMinEl.value.trim();
+    const expMin = expMinRaw ? Number(expMinRaw) : 0;
+    const rec: InvoiceTemplate = {
+      name,
+      to: invToEl.value.trim(),
+      amount: invAmountEl.value.trim(),
+      memo: invMemoEl.value.trim(),
+      invoiceId: invInvoiceIdEl.value.trim(),
+      expMin: Number.isFinite(expMin) ? Math.max(0, expMin) : 0,
+      flexAmount,
+      compactMode,
+    };
+    const list = loadTemplates();
+    const idx = list.findIndex((x) => x.name === name);
+    if (idx >= 0) list[idx] = rec;
+    else list.unshift(rec);
+    saveTemplates(list);
+    refreshTemplateSelect(name);
+    toast(lang === 'ja' ? 'テンプレを保存しました' : 'Template saved');
+  };
+
+  tplLoadBtn.onclick = () => {
+    const name = tplSelectEl.value;
+    const t = loadTemplates().find((x) => x.name === name);
+    if (!t) return;
+    tplNameEl.value = t.name;
+    invToEl.value = t.to || '';
+    invAmountEl.value = t.amount || '';
+    invMemoEl.value = t.memo || '';
+    invInvoiceIdEl.value = t.invoiceId || '';
+    invExpMinEl.value = String(t.expMin || 0);
+    flexAmount = !!t.flexAmount;
+    compactMode = t.compactMode !== false;
+    setLockUI();
+    toast(lang === 'ja' ? 'テンプレを読み込みました' : 'Template loaded');
+  };
+
+  tplDeleteBtn.onclick = () => {
+    const name = tplSelectEl.value;
+    if (!name) return;
+    const list = loadTemplates().filter((x) => x.name !== name);
+    saveTemplates(list);
+    refreshTemplateSelect();
+    toast(lang === 'ja' ? 'テンプレを削除しました' : 'Template deleted');
   };
 
   copyInvoiceBtn.onclick = async () => {
