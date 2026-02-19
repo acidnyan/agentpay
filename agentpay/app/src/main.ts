@@ -218,6 +218,7 @@ async function main() {
         </div>
         <div id="chainWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="sigWarn" class="warn" style="margin-top:6px;display:none"></div>
+        <div id="issuerBadge" class="small" style="margin-top:6px;display:none"></div>
         <div id="toChecksum" class="small" style="margin-top:4px"></div>
 
         <div class="btns">
@@ -396,6 +397,7 @@ async function main() {
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const chainWarnEl = $('chainWarn')!;
   const sigWarnEl = $('sigWarn')!;
+  const issuerBadgeEl = $('issuerBadge')!;
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
   const diagEl = $('diag')!;
@@ -527,6 +529,7 @@ async function main() {
       noPaySummary: 'まだ支払いサマリーがありません。',
       chainMismatchWarn: 'この請求リンクは {chain} 向けです。現在は {current} が選択されています。',
       sigMismatchWarn: '請求リンクの改ざんを検知しました（署名不一致）。',
+      issuerVerified: '発行者署名: 検証済み',
       diagTitle: '起動診断',
       diagWallet: 'ウォレットAPI',
       diagRpc: 'Base RPC',
@@ -592,6 +595,7 @@ async function main() {
       noPaySummary: 'No payment summary yet.',
       chainMismatchWarn: 'This invoice link is for {chain}. Current selection is {current}.',
       sigMismatchWarn: 'Invoice link appears tampered (signature mismatch).',
+      issuerVerified: 'Issuer signature: verified',
       diagTitle: 'Startup diagnostics',
       diagWallet: 'Wallet API',
       diagRpc: 'Base RPC',
@@ -1191,9 +1195,18 @@ async function main() {
     if (invoiceSigMismatch) {
       sigWarnEl.style.display = 'block';
       sigWarnEl.textContent = tr('sigMismatchWarn');
+      issuerBadgeEl.style.display = 'none';
+      issuerBadgeEl.textContent = '';
     } else {
       sigWarnEl.style.display = 'none';
       sigWarnEl.textContent = '';
+      if (signedByIssuer && signedProof) {
+        issuerBadgeEl.style.display = 'block';
+        issuerBadgeEl.innerHTML = `✅ ${tr('issuerVerified')} <span class="mono">${signedByIssuer.slice(0, 6)}…${signedByIssuer.slice(-4)}</span>`;
+      } else {
+        issuerBadgeEl.style.display = 'none';
+        issuerBadgeEl.textContent = '';
+      }
     }
 
     // Page URL (no params)
