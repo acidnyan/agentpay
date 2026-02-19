@@ -32,6 +32,16 @@ type InvoiceTemplate = {
   compactMode?: boolean;
 };
 
+type InvoiceRecord = {
+  ts: number;
+  url: string;
+  to: string;
+  amount: string;
+  memo?: string;
+  invoiceId?: string;
+  expTs?: number | null;
+};
+
 declare global {
   interface Window {
     __agentpay_last_tx?: LastTx;
@@ -304,6 +314,10 @@ async function main() {
           <a id="openInvoice" class="btn" target="_blank" rel="noreferrer">開く</a>
         </div>
         <div id="lockHint" class="small" style="margin-top:8px">ロック中は支払いフォームを編集不可にして誤送金を防ぎます（任意金額ONならamountだけ編集可）。</div>
+
+        <div class="sep"></div>
+        <div id="recentInvoicesTitle" class="muted" style="margin-bottom:8px">最近の請求履歴</div>
+        <div id="recentInvoices" class="small"></div>
       </div>
 
       <div class="card">
@@ -370,6 +384,8 @@ async function main() {
   const invInvoiceIdEl = $('invInvoiceId') as HTMLInputElement;
   const invExpMinEl = $('invExpMin') as HTMLInputElement;
   const invoiceUrlEl = $('invoiceUrl') as HTMLInputElement;
+  const recentInvoicesTitleEl = $('recentInvoicesTitle')!;
+  const recentInvoicesEl = $('recentInvoices')!;
   const genBtn = $('gen') as HTMLButtonElement;
   const compactBtn = $('compact') as HTMLButtonElement;
   const lockBtn = $('lock') as HTMLButtonElement;
@@ -451,6 +467,10 @@ async function main() {
       tplLoad: 'テンプレ読込',
       tplDelete: 'テンプレ削除',
       tplNone: '(テンプレなし)',
+      recentInvoicesTitle: '最近の請求履歴',
+      noRecentInvoices: 'まだ請求履歴がありません。',
+      useThis: 'この内容を反映',
+      copyLink: 'リンクコピー',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -503,6 +523,10 @@ async function main() {
       tplLoad: 'Load template',
       tplDelete: 'Delete template',
       tplNone: '(no templates)',
+      recentInvoicesTitle: 'Recent invoice history',
+      noRecentInvoices: 'No invoice history yet.',
+      useThis: 'Apply this',
+      copyLink: 'Copy link',
     }
   } as const;
 
@@ -524,7 +548,7 @@ async function main() {
       pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
       footer1: tr('footer1'), footer2: tr('footer2'),
       lblCsvFrom: tr('lblCsvFrom'), lblCsvTo: tr('lblCsvTo'), lblCsvSort: tr('lblCsvSort'), lockHint: tr('lockHint'),
-      lblTplName: tr('lblTplName'), lblTplSelect: tr('lblTplSelect'),
+      lblTplName: tr('lblTplName'), lblTplSelect: tr('lblTplSelect'), recentInvoicesTitle: tr('recentInvoicesTitle'),
     };
     Object.entries(textMap).forEach(([id, text]) => {
       const n = document.getElementById(id);
@@ -562,6 +586,7 @@ async function main() {
 
     const sel = tplSelectEl.value;
     refreshTemplateSelect(sel);
+    renderRecentInvoices();
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -743,6 +768,72 @@ async function main() {
     const arr = loadPaymentHistory();
     arr.unshift(rec);
     localStorage.setItem('agentpay_payments', JSON.stringify(arr.slice(0, 500)));
+  }
+
+  function loadInvoiceHistory(): InvoiceRecord[] {
+    try {
+      const v = localStorage.getItem('agentpay_invoices');
+      const arr = v ? JSON.parse(v) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveInvoiceHistory(rec: InvoiceRecord) {
+    const arr = loadInvoiceHistory();
+    arr.unshift(rec);
+    localStorage.setItem('agentpay_invoices', JSON.stringify(arr.slice(0, 100)));
+  }
+
+  function renderRecentInvoices() {
+    const list = loadInvoiceHistory();
+    if (!list.length) {
+      recentInvoicesEl.textContent = tr('noRecentInvoices');
+      return;
+    }
+    recentInvoicesEl.innerHTML = list.slice(0, 6).map((r, idx) => {
+      const expText = r.expTs ? (lang === 'ja' ? `有効期限: ${new Date(r.expTs * 1000).toLocaleString()}` : `Expiry: ${new Date(r.expTs * 1000).toLocaleString()}`) : (lang === 'ja' ? '無期限' : 'No expiry');
+      const idText = r.invoiceId ? ` / invoiceId: <span class="mono">${r.invoiceId}</span>` : '';
+      return `<div style="border:1px solid #273142;border-radius:10px;padding:8px;margin-bottom:8px">
+        <div><span class="mono">${r.amount}</span> USDC / <span class="mono">${r.to.slice(0, 8)}…${r.to.slice(-6)}</span>${idText}</div>
+        <div class="small">${expText}</div>
+        <div class="btns" style="margin-top:6px">
+          <button data-act="use" data-idx="${idx}">${tr('useThis')}</button>
+          <button data-act="copy" data-idx="${idx}">${tr('copyLink')}</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    recentInvoicesEl.querySelectorAll('button[data-act]').forEach((b) => {
+      b.addEventListener('click', async (e) => {
+        const elb = e.currentTarget as HTMLButtonElement;
+        const idx = Number(elb.getAttribute('data-idx') || '-1');
+        const act = elb.getAttribute('data-act');
+        const rec = list[idx];
+        if (!rec) return;
+        if (act === 'use') {
+          invToEl.value = rec.to;
+          invAmountEl.value = rec.amount;
+          invMemoEl.value = rec.memo || '';
+          invInvoiceIdEl.value = rec.invoiceId || '';
+          if (rec.expTs) {
+            const rem = Math.max(0, Math.floor((rec.expTs - Math.floor(Date.now() / 1000)) / 60));
+            invExpMinEl.value = String(rem);
+          }
+          invoiceUrlEl.value = rec.url;
+          updateInvoiceButtons();
+          toast(lang === 'ja' ? '請求内容を反映しました' : 'Applied invoice data');
+        } else if (act === 'copy') {
+          try {
+            await navigator.clipboard.writeText(rec.url);
+            toast(lang === 'ja' ? 'リンクをコピーしました' : 'Copied link');
+          } catch {
+            showErr(lang === 'ja' ? 'コピーに失敗しました。' : 'Failed to copy.');
+          }
+        }
+      });
+    });
   }
 
   function loadTemplates(): InvoiceTemplate[] {
@@ -1243,7 +1334,9 @@ async function main() {
     if (!Number.isFinite(expMin) || expMin < 0) return showErr('有効期限（分）は0以上の数値で入力してください。');
     invoiceExpTs = expMin > 0 ? Math.floor(Date.now() / 1000) + Math.floor(expMin * 60) : null;
     invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo, invoiceId, invoiceExpTs);
+    saveInvoiceHistory({ ts: Date.now(), url: invoiceUrlEl.value, to, amount, memo, invoiceId, expTs: invoiceExpTs });
     updateInvoiceButtons();
+    renderRecentInvoices();
     refresh();
     toast('請求リンクを生成しました');
     toast('コピー中…');
