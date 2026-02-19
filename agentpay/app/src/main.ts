@@ -134,6 +134,9 @@ async function main() {
           <div class="col">
             <label id="lblTo">支払い先 (to)</label>
             <input id="to" class="mono" placeholder="0x..." />
+            <div class="btns" style="margin-top:8px">
+              <button id="useMyAddress" type="button">自分の接続アドレスを使う</button>
+            </div>
           </div>
           <div class="col">
             <label id="lblAmount">金額 (USDC)</label>
@@ -300,6 +303,7 @@ async function main() {
   const panelCreate = $('panelCreate')!;
 
   const toEl = $('to') as HTMLInputElement;
+  const useMyAddressBtn = $('useMyAddress') as HTMLButtonElement;
   const amountEl = $('amount') as HTMLInputElement;
   const memoEl = $('memo') as HTMLInputElement;
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
@@ -358,7 +362,7 @@ async function main() {
       tabPay: '支払い',
       tabCreate: '請求作成',
       tabHint: '支払い / 請求作成 を切り替えできます。',
-      lblTo: '支払い先 (to)', lblAmount: '金額 (USDC)', lblMemo: 'メモ (任意)', lblInvoiceId: '請求ID (invoiceId, 任意)',
+      lblTo: '支払い先 (to)', lblAmount: '金額 (USDC)', lblMemo: 'メモ (任意)', lblInvoiceId: '請求ID (invoiceId, 任意)', useMyAddress: '自分の接続アドレスを使う',
       connect: 'ウォレット接続', openCbw: 'Coinbase Walletで開く', disconnect: '切断', pay: '支払う（USDC送金）', copy: 'コピー（宛先/金額/メモ）',
       verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する',
       createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
@@ -399,7 +403,7 @@ async function main() {
       tabPay: 'Pay',
       tabCreate: 'Create Invoice',
       tabHint: 'Switch between Pay and Invoice Creator.',
-      lblTo: 'Recipient (to)', lblAmount: 'Amount (USDC)', lblMemo: 'Memo (optional)', lblInvoiceId: 'Invoice ID (optional)',
+      lblTo: 'Recipient (to)', lblAmount: 'Amount (USDC)', lblMemo: 'Memo (optional)', lblInvoiceId: 'Invoice ID (optional)', useMyAddress: 'Use my connected wallet address',
       connect: 'Connect Wallet', openCbw: 'Open in Coinbase Wallet', disconnect: 'Disconnect', pay: 'Pay (USDC transfer)', copy: 'Copy (to/amount/memo)',
       verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify',
       createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
@@ -474,6 +478,7 @@ async function main() {
     copyPageBtn.textContent = tr('copyUrl');
     copyShareBtn.textContent = tr('copyUrl');
     openInvoiceEl.textContent = tr('open');
+    useMyAddressBtn.textContent = tr('useMyAddress');
     verifyTxEl.placeholder = tr('verifyPlaceholder');
 
     const opts = csvSortEl.options;
@@ -1075,6 +1080,15 @@ async function main() {
   connectBtn.onclick = () => void connect().catch((e) => showErr(e?.message || String(e)));
   disconnectBtn.onclick = () => void disconnect();
   (payBtn as HTMLButtonElement).onclick = () => void pay();
+  useMyAddressBtn.onclick = () => {
+    if (!connectedAddress) {
+      showErr(lang === 'ja' ? '先にウォレット接続してください。' : 'Please connect wallet first.');
+      return;
+    }
+    toEl.value = connectedAddress;
+    refresh();
+    toast(lang === 'ja' ? '宛先に接続アドレスを入力しました' : 'Filled recipient with connected address');
+  };
 
   // Invoice creator actions
   function updateInvoiceButtons() {
