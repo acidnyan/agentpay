@@ -1,4 +1,3 @@
-import EthereumProvider from '@walletconnect/ethereum-provider';
 import { ethers } from 'ethers';
 
 const WC_PROJECT_ID = '83569f52a2a1226834e65a28e4307fec';
@@ -1120,7 +1119,8 @@ async function main() {
       }
     }
 
-    // WalletConnect fallback
+    // WalletConnect fallback (lazy-loaded to reduce initial bundle size)
+    const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
     wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
       chains: [CHAIN_ID],
