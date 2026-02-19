@@ -1106,7 +1106,8 @@ async function main() {
     const units = usdcToUnits(amount);
     const valid = isHexAddress(to) && units !== null;
 
-    if (hasInvoiceContext && invoiceContextChain && invoiceContextChain !== currentChain) {
+    const chainMismatch = hasInvoiceContext && !!invoiceContextChain && invoiceContextChain !== currentChain;
+    if (chainMismatch && invoiceContextChain) {
       const tpl = tr('chainMismatchWarn');
       const msg = tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label);
       chainWarnEl.style.display = 'block';
@@ -1149,7 +1150,7 @@ async function main() {
       expStateEl.textContent = tr('expNoLimit');
     }
 
-    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired);
+    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired && !chainMismatch);
 
     // Tx UI
     if (!window.__agentpay_last_tx) {
@@ -1199,7 +1200,8 @@ async function main() {
       );
     }
 
-    if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr(tr('errExpired'));
+    if (chainMismatch) showErr(chainWarnEl.textContent || tr('chainMismatchWarn').replace('{chain}', '').replace('{current}', ''));
+    else if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr(tr('errExpired'));
     else if (!isHexAddress(to)) showErr(tr('errInvalidTo'));
     else if (units === null) showErr(tr('errInvalidAmount'));
     else if (connectedAddress && !hasBalance) showErr(tr('errInsufficient'));
@@ -1276,6 +1278,10 @@ async function main() {
 
     if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
     if (units === null) return showErr('金額が不正です。');
+    if (hasInvoiceContext && invoiceContextChain && invoiceContextChain !== currentChain) {
+      const tpl = tr('chainMismatchWarn');
+      return showErr(tpl.replace('{chain}', CHAIN_CONFIGS[invoiceContextChain].label).replace('{current}', chainCfg().label));
+    }
     if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) return showErr('この請求リンクは期限切れです。');
     if (usdcBalanceUnits < units) return showErr('USDC残高が不足しています。');
 
