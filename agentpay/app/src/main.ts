@@ -147,7 +147,7 @@ async function main() {
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
 
         <div class="sep"></div>
-        <div class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合）</div>
+        <div class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）</div>
         <div class="row">
           <input id="verifyTx" class="mono" placeholder="0x...（66文字）" />
           <button id="verifyBtn">確認する</button>
@@ -647,6 +647,9 @@ async function main() {
       return;
     }
 
+    const expectedTo = toEl.value.trim().toLowerCase();
+    const expectedUnits = usdcToUnits(amountEl.value.trim());
+
     verifyResultEl.textContent = '照合中…';
     try {
       const body = {
@@ -666,11 +669,43 @@ async function main() {
         verifyResultEl.innerHTML = `未確認（pending か未検出）: <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScanで確認</a>`;
         return;
       }
+
       const ok = rcpt.status === '0x1';
-      const usdcTouched = Array.isArray(rcpt.logs) && rcpt.logs.some((l: any) => (l?.address || '').toLowerCase() === USDC.toLowerCase());
+      const transferTopic = ethers.id('Transfer(address,address,uint256)').toLowerCase();
+      let matchedTo = false;
+      let matchedAmount = false;
+      let foundTransfer = false;
+
+      if (Array.isArray(rcpt.logs)) {
+        for (const l of rcpt.logs) {
+          if ((l?.address || '').toLowerCase() !== USDC.toLowerCase()) continue;
+          if (!Array.isArray(l?.topics) || l.topics.length < 3) continue;
+          if ((l.topics[0] || '').toLowerCase() !== transferTopic) continue;
+
+          foundTransfer = true;
+          const toTopic = String(l.topics[2] || '').toLowerCase();
+          const toAddr = `0x${toTopic.slice(-40)}`;
+          const rawData = typeof l.data === 'string' ? l.data : '0x0';
+          let value = 0n;
+          try {
+            value = BigInt(rawData);
+          } catch {
+            value = 0n;
+          }
+
+          if (isHexAddress(expectedTo) && toAddr === expectedTo) matchedTo = true;
+          if (expectedUnits !== null && value === expectedUnits) matchedAmount = true;
+        }
+      }
+
       const statusText = ok ? '成功' : '失敗';
-      const usdcText = usdcTouched ? 'USDC transferログあり' : 'USDCログ未検出';
-      verifyResultEl.innerHTML = `照合結果: <b>${statusText}</b> / ${usdcText} / block: <span class="mono">${parseInt(rcpt.blockNumber || '0x0', 16)}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
+      const transferText = foundTransfer ? 'USDC Transferログあり' : 'USDC Transferログ未検出';
+      const toText = isHexAddress(expectedTo) ? (matchedTo ? '宛先一致' : '宛先不一致') : '宛先未入力';
+      const amountText = expectedUnits !== null ? (matchedAmount ? '金額一致' : '金額不一致') : '金額未入力';
+      const verifyOk = ok && foundTransfer && (!isHexAddress(expectedTo) || matchedTo) && (expectedUnits === null || matchedAmount);
+      const judge = verifyOk ? '<b style="color:var(--ok)">検証OK</b>' : '<b style="color:var(--danger)">要確認</b>';
+
+      verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${parseInt(rcpt.blockNumber || '0x0', 16)}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
     } catch (e: any) {
       verifyResultEl.innerHTML = `<span class="warn">照合失敗: ${e?.message || String(e)}</span>`;
     }
