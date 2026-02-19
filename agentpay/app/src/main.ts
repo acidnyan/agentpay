@@ -145,6 +145,7 @@ async function main() {
         <div id="bal" class="muted" style="margin-top:6px"></div>
         <div id="err" class="warn" style="margin-top:10px;display:none"></div>
         <div id="ok" class="good" style="margin-top:10px;display:none"></div>
+        <div id="expState" class="small" style="margin-top:8px"></div>
 
         <div class="sep"></div>
         <div class="muted" style="margin-bottom:8px">支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）</div>
@@ -180,6 +181,13 @@ async function main() {
           <div class="col" style="min-width:100%">
             <label>memo (optional)</label>
             <input id="invMemo" placeholder="task-123" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="col">
+            <label>有効期限（分, 0で無期限）</label>
+            <input id="invExpMin" class="mono" placeholder="1440" inputmode="numeric" />
           </div>
         </div>
 
@@ -245,6 +253,7 @@ async function main() {
   const balEl = $('bal')!;
   const errEl = $('err')!;
   const okEl = $('ok')!;
+  const expStateEl = $('expState')!;
   const verifyTxEl = $('verifyTx') as HTMLInputElement;
   const verifyBtn = $('verifyBtn') as HTMLButtonElement;
   const verifyResultEl = $('verifyResult')!;
@@ -259,6 +268,7 @@ async function main() {
   const invToEl = $('invTo') as HTMLInputElement;
   const invAmountEl = $('invAmount') as HTMLInputElement;
   const invMemoEl = $('invMemo') as HTMLInputElement;
+  const invExpMinEl = $('invExpMin') as HTMLInputElement;
   const invoiceUrlEl = $('invoiceUrl') as HTMLInputElement;
   const genBtn = $('gen') as HTMLButtonElement;
   const lockBtn = $('lock') as HTMLButtonElement;
@@ -420,6 +430,7 @@ async function main() {
 
   let invoiceLocked = false;
   let flexAmount = false;
+  let invoiceExpTs: number | null = null;
 
   function setLockUI() {
     lockBtn.textContent = `ロック: ${invoiceLocked ? 'ON' : 'OFF'}`;
@@ -434,7 +445,7 @@ async function main() {
       : 'モード: 固定金額（amount編集不可）';
   }
 
-  function buildInvoiceUrl(to: string, amount: string, memo: string): string {
+  function buildInvoiceUrl(to: string, amount: string, memo: string, expTs?: number | null): string {
     const u = new URL(location.href);
     u.searchParams.set('tab', 'pay');
     u.searchParams.set('lock', '1');
@@ -445,6 +456,10 @@ async function main() {
     u.searchParams.set('amount', amount);
     if (memo) u.searchParams.set('memo', memo);
     else u.searchParams.delete('memo');
+
+    if (expTs && Number.isFinite(expTs) && expTs > 0) u.searchParams.set('exp', String(Math.floor(expTs)));
+    else u.searchParams.delete('exp');
+
     return u.toString();
   }
 
@@ -466,7 +481,22 @@ async function main() {
     shareEl.value = (isHexAddress(to) && amount) ? buildShareUrl(to, amount, memo) : location.href;
 
     const hasBalance = units !== null ? usdcBalanceUnits >= units : false;
-    payBtn.disabled = !(connectedAddress && valid && hasBalance);
+
+    const now = Math.floor(Date.now() / 1000);
+    const expired = invoiceExpTs !== null && now > invoiceExpTs;
+    if (invoiceExpTs) {
+      const remain = invoiceExpTs - now;
+      if (remain > 0) {
+        const min = Math.floor(remain / 60);
+        expStateEl.textContent = `有効期限: ${new Date(invoiceExpTs * 1000).toLocaleString()}（残り約${min}分）`;
+      } else {
+        expStateEl.innerHTML = `<span class="warn">この請求リンクは期限切れです（${new Date(invoiceExpTs * 1000).toLocaleString()}）。</span>`;
+      }
+    } else {
+      expStateEl.textContent = '有効期限: 無期限';
+    }
+
+    payBtn.disabled = !(connectedAddress && valid && hasBalance && !expired);
 
     // Tx UI
     if (!window.__agentpay_last_tx) {
@@ -516,7 +546,8 @@ async function main() {
       );
     }
 
-    if (!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
+    if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr('この請求リンクは有効期限切れです。新しい請求リンクを発行してください。');
+    else if (!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
     else if (units === null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
     else if (connectedAddress && !hasBalance) showErr('USDC残高が不足しています。');
   }
@@ -587,6 +618,7 @@ async function main() {
 
     if (!isHexAddress(to)) return showErr('宛先(to)が不正です。');
     if (units === null) return showErr('金額が不正です。');
+    if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) return showErr('この請求リンクは期限切れです。');
     if (usdcBalanceUnits < units) return showErr('USDC残高が不足しています。');
 
     if (to.toLowerCase() === connectedAddress.toLowerCase()) {
@@ -716,6 +748,7 @@ async function main() {
     const defTo = p.get('to') || '0x05BFC95c50750A2B530F5D1Ecb949F05Bfb764EC';
     const defAmount = p.get('amount') || '';
     const defMemo = p.get('memo') || '';
+    const expParam = p.get('exp');
 
     // Tab: allow `tab=create` to open creator first
     const tabParam = p.get('tab');
@@ -724,6 +757,7 @@ async function main() {
     // Lock via URL param
     invoiceLocked = p.get('lock') === '1';
     flexAmount = p.get('flexAmount') === '1';
+    invoiceExpTs = expParam && /^\d+$/.test(expParam) ? Number(expParam) : null;
 
     toEl.value = defTo;
     amountEl.value = defAmount;
@@ -733,7 +767,13 @@ async function main() {
     invToEl.value = defTo;
     invAmountEl.value = defAmount;
     invMemoEl.value = defMemo;
-    invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo) : '';
+    if (invoiceExpTs) {
+      const rem = Math.max(1, Math.floor((invoiceExpTs - Math.floor(Date.now() / 1000)) / 60));
+      invExpMinEl.value = String(rem);
+    } else {
+      invExpMinEl.value = '0';
+    }
+    invoiceUrlEl.value = (isHexAddress(defTo) && defAmount) ? buildInvoiceUrl(defTo, defAmount, defMemo, invoiceExpTs) : '';
     updateInvoiceButtons();
 
     openInCbw.href = buildCbwDappLink(location.href);
@@ -763,10 +803,15 @@ async function main() {
     const to = invToEl.value.trim();
     const amount = invAmountEl.value.trim();
     const memo = invMemoEl.value.trim();
+    const expMinRaw = invExpMinEl.value.trim();
+    const expMin = expMinRaw ? Number(expMinRaw) : 0;
     if (!isHexAddress(to)) return showErr('Invoice to が不正です。');
     if (usdcToUnits(amount) === null) return showErr('Invoice amount が不正です（小数は6桁まで）。');
-    invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo);
+    if (!Number.isFinite(expMin) || expMin < 0) return showErr('有効期限（分）は0以上の数値で入力してください。');
+    invoiceExpTs = expMin > 0 ? Math.floor(Date.now() / 1000) + Math.floor(expMin * 60) : null;
+    invoiceUrlEl.value = buildInvoiceUrl(to, amount, memo, invoiceExpTs);
     updateInvoiceButtons();
+    refresh();
     toast('請求リンクを生成しました');
     toast('コピー中…');
     try {
