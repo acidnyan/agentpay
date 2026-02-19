@@ -169,8 +169,8 @@ async function main() {
 
         <div class="sep"></div>
         <div class="muted">
-          このページは <span class="mono">Base</span> 上の <span class="mono">USDC</span> 支払い用です（資金を預かりません）。
-          送金は不可逆なので、宛先と金額を確認してから実行してください。
+          <span id="footer1">このページは Base 上の USDC 支払い用です（資金を預かりません）。</span>
+          <span id="footer2">送金は不可逆なので、宛先と金額を確認してから実行してください。</span>
         </div>
         <div class="small" style="margin-top:10px">
           USDC contract (Base): <span class="mono">${USDC}</span>
@@ -330,6 +330,16 @@ async function main() {
       shareUrlTitle: '共有用リンク（現在のURL / パラメータ付き）', shareUrlHint: '請求作成で生成した「請求リンク」は上の生成欄（invoiceUrl）を使うのが推奨。',
       modeFixed: 'モード: 固定金額（amount編集不可）', modeFlex: 'モード: 任意金額（amount編集可 / to,memo固定）',
       expNoLimit: '有効期限: 無期限',
+      baseScan: 'BaseScanで見る',
+      usdcBalance: 'USDC残高',
+      unconnected: '未接続',
+      errInvalidTo: '宛先アドレス(to)が正しくありません。',
+      errInvalidAmount: '金額(USDC)が正しくありません（小数は6桁まで）。',
+      errInsufficient: 'USDC残高が不足しています。',
+      errExpired: 'この請求リンクは有効期限切れです。新しい請求リンクを発行してください。',
+      footer1: 'このページは Base 上の USDC 支払い用です（資金を預かりません）。',
+      footer2: '送金は不可逆なので、宛先と金額を確認してから実行してください。',
+      verifyPlaceholder: '0x...（66文字）',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -347,6 +357,16 @@ async function main() {
       shareUrlTitle: 'Share URL (current URL with parameters)', shareUrlHint: 'For payment requests, prefer generated invoice URL above.',
       modeFixed: 'Mode: fixed amount (amount locked)', modeFlex: 'Mode: flexible amount (amount editable / to,memo locked)',
       expNoLimit: 'Expiry: none',
+      baseScan: 'View on BaseScan',
+      usdcBalance: 'USDC balance',
+      unconnected: 'not connected',
+      errInvalidTo: 'Recipient address (to) is invalid.',
+      errInvalidAmount: 'Amount (USDC) is invalid (up to 6 decimals).',
+      errInsufficient: 'Insufficient USDC balance.',
+      errExpired: 'This invoice link has expired. Please issue a new one.',
+      footer1: 'This page is for USDC payments on Base (non-custodial).',
+      footer2: 'Transfers are irreversible. Please verify recipient and amount before sending.',
+      verifyPlaceholder: '0x... (66 chars)',
     }
   } as const;
 
@@ -366,6 +386,7 @@ async function main() {
       lblExp: tr('lblExp'), lblFlex: tr('lblFlex'), flexHint: tr('flexHint'),
       invoiceGeneratedLabel: lang === 'ja' ? '生成された請求リンク' : 'Generated invoice link',
       pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
+      footer1: tr('footer1'), footer2: tr('footer2'),
     };
     Object.entries(textMap).forEach(([id, text]) => {
       const n = document.getElementById(id);
@@ -375,6 +396,7 @@ async function main() {
     connectBtn.textContent = tr('connect');
     openInCbw.textContent = tr('openCbw');
     disconnectBtn.textContent = tr('disconnect');
+    basescanEl.textContent = tr('baseScan');
     payBtn.textContent = tr('pay');
     copyBtn.textContent = tr('copy');
     verifyBtn.textContent = tr('verifyBtn');
@@ -384,6 +406,7 @@ async function main() {
     copyPageBtn.textContent = tr('copyUrl');
     copyShareBtn.textContent = tr('copyUrl');
     openInvoiceEl.textContent = tr('open');
+    verifyTxEl.placeholder = tr('verifyPlaceholder');
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -591,9 +614,13 @@ async function main() {
       const remain = invoiceExpTs - now;
       if (remain > 0) {
         const min = Math.floor(remain / 60);
-        expStateEl.textContent = `有効期限: ${new Date(invoiceExpTs * 1000).toLocaleString()}（残り約${min}分）`;
+        expStateEl.textContent = lang === 'ja'
+          ? `有効期限: ${new Date(invoiceExpTs * 1000).toLocaleString()}（残り約${min}分）`
+          : `Expiry: ${new Date(invoiceExpTs * 1000).toLocaleString()} (~${min} min left)`;
       } else {
-        expStateEl.innerHTML = `<span class="warn">この請求リンクは期限切れです（${new Date(invoiceExpTs * 1000).toLocaleString()}）。</span>`;
+        expStateEl.innerHTML = lang === 'ja'
+          ? `<span class="warn">この請求リンクは期限切れです（${new Date(invoiceExpTs * 1000).toLocaleString()}）。</span>`
+          : `<span class="warn">This invoice link is expired (${new Date(invoiceExpTs * 1000).toLocaleString()}).</span>`;
       }
     } else {
       expStateEl.textContent = tr('expNoLimit');
@@ -632,14 +659,14 @@ async function main() {
 
     // Balance UI
     if (!connectedAddress) {
-      setBalHtml('USDC残高: (未接続)');
+      setBalHtml(`${tr('usdcBalance')}: (${tr('unconnected')})`);
     } else {
       const whole = (usdcBalanceUnits / 1000000n).toString();
       const frac = (usdcBalanceUnits % 1000000n)
         .toString()
         .padStart(6, '0')
         .replace(/0+$/, '');
-      const balText = `USDC残高: ${frac ? `${whole}.${frac}` : whole}`;
+      const balText = `${tr('usdcBalance')}: ${frac ? `${whole}.${frac}` : whole}`;
       const chainTxt = lastChainId ? `chainId: ${lastChainId}` : 'chainId: (unknown)';
       const errTxt = lastBalErr ? ` / balErr: ${lastBalErr}` : '';
       const addrScan = `https://basescan.org/address/${connectedAddress}`;
@@ -649,10 +676,10 @@ async function main() {
       );
     }
 
-    if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr('この請求リンクは有効期限切れです。新しい請求リンクを発行してください。');
-    else if (!isHexAddress(to)) showErr('宛先アドレス(to)が正しくありません。');
-    else if (units === null) showErr('金額(USDC)が正しくありません（小数は6桁まで）。');
-    else if (connectedAddress && !hasBalance) showErr('USDC残高が不足しています。');
+    if (invoiceExpTs !== null && Math.floor(Date.now() / 1000) > invoiceExpTs) showErr(tr('errExpired'));
+    else if (!isHexAddress(to)) showErr(tr('errInvalidTo'));
+    else if (units === null) showErr(tr('errInvalidAmount'));
+    else if (connectedAddress && !hasBalance) showErr(tr('errInsufficient'));
   }
 
   async function connect() {
