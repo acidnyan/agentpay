@@ -424,6 +424,8 @@ async function main() {
   type Lang = 'ja' | 'en';
   let activeTab: Tab = 'pay';
   let lang: Lang = 'ja';
+  let payPanelInitialized = false;
+  let createPanelInitialized = false;
 
   const i18n = {
     ja: {
@@ -550,6 +552,19 @@ async function main() {
     return i18n[lang][k] || i18n.ja[k];
   }
 
+  function ensurePayPanelInitialized() {
+    if (payPanelInitialized) return;
+    renderLastPaymentSummary();
+    payPanelInitialized = true;
+  }
+
+  function ensureCreatePanelInitialized() {
+    if (createPanelInitialized) return;
+    refreshTemplateSelect();
+    renderRecentInvoices();
+    createPanelInitialized = true;
+  }
+
   function applyI18n() {
     tagLineEl.textContent = 'Base USDC invoice link';
     tabPayBtn.textContent = tr('tabPay');
@@ -600,10 +615,13 @@ async function main() {
       opts[3].text = tr('sortTimeAsc');
     }
 
-    const sel = tplSelectEl.value;
-    refreshTemplateSelect(sel);
-    renderRecentInvoices();
-    renderLastPaymentSummary();
+    if (createPanelInitialized) {
+      const sel = tplSelectEl.value;
+      refreshTemplateSelect(sel);
+      if (sel) tplSelectEl.value = sel;
+      renderRecentInvoices();
+    }
+    if (payPanelInitialized) renderLastPaymentSummary();
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -616,6 +634,10 @@ async function main() {
     panelCreate.style.display = payOn ? 'none' : 'block';
     tabPayBtn.classList.toggle('primary', payOn);
     tabCreateBtn.classList.toggle('primary', !payOn);
+
+    if (payOn) ensurePayPanelInitialized();
+    else ensureCreatePanelInitialized();
+
     // Keep URL in sync (no reload)
     const u = new URL(location.href);
     u.searchParams.set('tab', tab);
@@ -1357,7 +1379,6 @@ async function main() {
     openInCbw.href = buildCbwDappLink(location.href);
 
     applyI18n();
-    refreshTemplateSelect();
     setLockUI();
     refresh();
     setPill();
