@@ -219,6 +219,7 @@ async function main() {
         <div class="row">
           <input id="verifyTx" class="mono" placeholder="0x...（66文字）" />
           <button id="verifyBtn">確認する</button>
+          <button id="copyVerify">検証結果コピー</button>
         </div>
         <div id="verifyResult" class="small" style="margin-top:8px"></div>
 
@@ -353,6 +354,7 @@ async function main() {
   const expStateEl = $('expState')!;
   const verifyTxEl = $('verifyTx') as HTMLInputElement;
   const verifyBtn = $('verifyBtn') as HTMLButtonElement;
+  const copyVerifyBtn = $('copyVerify') as HTMLButtonElement;
   const verifyResultEl = $('verifyResult')!;
   const netPill = $('netPill')!;
   const payBtn = $('pay') as HTMLButtonElement;
@@ -406,7 +408,7 @@ async function main() {
       tabHint: '支払い / 請求作成 を切り替えできます。',
       lblTo: '支払い先 (to)', lblAmount: '金額 (USDC)', lblMemo: 'メモ (任意)', lblInvoiceId: '請求ID (invoiceId, 任意)', useMyAddress: '自分の接続アドレスを使う',
       connect: 'ウォレット接続', openCbw: 'Coinbase Walletで開く', disconnect: '切断', pay: '支払う（USDC送金）', copy: 'コピー（宛先/金額/メモ）',
-      verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する',
+      verifyTitle: '支払い確認（Txハッシュ照合: 宛先/金額の一致判定つき）', verifyBtn: '確認する', verifyCopy: '検証結果コピー',
       createTitle: '請求作成（Invoice Creator）', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: '有効期限（分, 0で無期限）',
       lblFlex: '支払い側で金額を編集', flexHint: 'ONで金額のみ編集可（宛先/メモは固定）。',
       gen: '請求リンク生成', apply: 'この請求をフォームに反映', copyUrl: 'URLコピー', open: '開く', exportCsv: 'CSV出力',
@@ -458,7 +460,7 @@ async function main() {
       tabHint: 'Switch between Pay and Invoice Creator.',
       lblTo: 'Recipient (to)', lblAmount: 'Amount (USDC)', lblMemo: 'Memo (optional)', lblInvoiceId: 'Invoice ID (optional)', useMyAddress: 'Use my connected wallet address',
       connect: 'Connect Wallet', openCbw: 'Open in Coinbase Wallet', disconnect: 'Disconnect', pay: 'Pay (USDC transfer)', copy: 'Copy (to/amount/memo)',
-      verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify',
+      verifyTitle: 'Payment verification (Tx hash with recipient/amount match)', verifyBtn: 'Verify', verifyCopy: 'Copy verification',
       createTitle: 'Invoice Creator', lblInvMemo: 'memo (optional)', lblInvInvoiceId: 'invoiceId (optional)', lblExp: 'Expiry (minutes, 0 = no expiry)',
       lblFlex: 'Allow payer to edit amount', flexHint: 'When ON, only amount is editable (to/memo locked).',
       gen: 'Generate Invoice Link', apply: 'Apply this invoice to form', copyUrl: 'Copy URL', open: 'Open', exportCsv: 'Export CSV',
@@ -537,6 +539,7 @@ async function main() {
     copyBtn.textContent = tr('copy');
     exportCsvBtn.textContent = tr('exportCsv');
     verifyBtn.textContent = tr('verifyBtn');
+    copyVerifyBtn.textContent = tr('verifyCopy');
     genBtn.textContent = tr('gen');
     applyBtn.textContent = tr('apply');
     tplSaveBtn.textContent = tr('tplSave');
@@ -615,6 +618,7 @@ async function main() {
   let usdcBalanceUnits: bigint = 0n;
   let lastChainId: string | null = null;
   let lastBalErr: string | null = null;
+  let lastVerifyText = '';
 
   function setPill() {
     netPill.textContent = connectedAddress
@@ -1052,6 +1056,7 @@ async function main() {
     const hash = verifyTxEl.value.trim();
     if (!isTxHash(hash)) {
       verifyResultEl.innerHTML = '<span class="warn">Txハッシュ形式が不正です。</span>';
+      lastVerifyText = lang === 'ja' ? '照合失敗: Txハッシュ形式が不正です。' : 'Verification failed: invalid Tx hash format.';
       return;
     }
 
@@ -1075,6 +1080,7 @@ async function main() {
       const rcpt = json?.result;
       if (!rcpt) {
         verifyResultEl.innerHTML = `未確認（pending か未検出）: <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScanで確認</a>`;
+        lastVerifyText = `tx: ${hash}\nstatus: pending_or_not_found\nlink: https://basescan.org/tx/${hash}`;
         return;
       }
 
@@ -1113,9 +1119,22 @@ async function main() {
       const verifyOk = ok && foundTransfer && (!isHexAddress(expectedTo) || matchedTo) && (expectedUnits === null || matchedAmount);
       const judge = verifyOk ? '<b style="color:var(--ok)">検証OK</b>' : '<b style="color:var(--danger)">要確認</b>';
 
-      verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${parseInt(rcpt.blockNumber || '0x0', 16)}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
+      const block = parseInt(rcpt.blockNumber || '0x0', 16);
+      verifyResultEl.innerHTML = `${judge} / 実行: <b>${statusText}</b> / ${transferText} / ${toText} / ${amountText} / block: <span class="mono">${block}</span> / <a target="_blank" rel="noreferrer" href="https://basescan.org/tx/${hash}">BaseScan</a>`;
+      lastVerifyText = [
+        `tx: ${hash}`,
+        `verify: ${verifyOk ? 'ok' : 'review'}`,
+        `execution: ${ok ? 'success' : 'failed'}`,
+        `usdc_transfer_log: ${foundTransfer ? 'yes' : 'no'}`,
+        `to_match: ${matchedTo ? 'yes' : 'no'}`,
+        `amount_match: ${matchedAmount ? 'yes' : 'no'}`,
+        `block: ${block}`,
+        `link: https://basescan.org/tx/${hash}`,
+      ].join('\n');
     } catch (e: any) {
-      verifyResultEl.innerHTML = `<span class="warn">照合失敗: ${e?.message || String(e)}</span>`;
+      const m = e?.message || String(e);
+      verifyResultEl.innerHTML = `<span class="warn">照合失敗: ${m}</span>`;
+      lastVerifyText = `tx: ${hash}\nverify: error\nmessage: ${m}`;
     }
   }
 
@@ -1401,6 +1420,18 @@ async function main() {
   };
 
   verifyBtn.onclick = () => void verifyTx();
+  copyVerifyBtn.onclick = async () => {
+    if (!lastVerifyText) {
+      toast(lang === 'ja' ? '先に照合を実行してください' : 'Run verification first');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lastVerifyText);
+      toast(lang === 'ja' ? '検証結果をコピーしました' : 'Copied verification result');
+    } catch {
+      showErr(lang === 'ja' ? 'コピーに失敗しました。' : 'Failed to copy.');
+    }
+  };
   verifyTxEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') void verifyTx();
   });
