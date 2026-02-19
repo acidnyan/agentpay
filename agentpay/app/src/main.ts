@@ -163,6 +163,25 @@ async function main() {
           <button id="exportCsv">CSV出力</button>
           <a id="basescan" class="btn" target="_blank" rel="noreferrer">BaseScanで見る</a>
         </div>
+        <div class="row" style="margin-top:8px">
+          <div class="col" style="min-width:170px">
+            <label id="lblCsvFrom">CSV開始日</label>
+            <input id="csvFrom" type="date" />
+          </div>
+          <div class="col" style="min-width:170px">
+            <label id="lblCsvTo">CSV終了日</label>
+            <input id="csvTo" type="date" />
+          </div>
+          <div class="col" style="min-width:220px">
+            <label id="lblCsvSort">CSV並び順</label>
+            <select id="csvSort" style="width:100%;box-sizing:border-box;background:#0f1320;color:var(--fg);border:1px solid #273142;border-radius:10px;padding:10px 12px;font-size:14px">
+              <option value="invoiceIdAsc">invoiceId (A→Z)</option>
+              <option value="invoiceIdDesc">invoiceId (Z→A)</option>
+              <option value="timeDesc">time (new→old)</option>
+              <option value="timeAsc">time (old→new)</option>
+            </select>
+          </div>
+        </div>
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
         <div id="tx" class="muted" style="margin-top:6px"></div>
@@ -321,6 +340,9 @@ async function main() {
   const disconnectBtn = $('disconnect') as HTMLButtonElement;
   const copyBtn = $('copy') as HTMLButtonElement;
   const exportCsvBtn = $('exportCsv') as HTMLButtonElement;
+  const csvFromEl = $('csvFrom') as HTMLInputElement;
+  const csvToEl = $('csvTo') as HTMLInputElement;
+  const csvSortEl = $('csvSort') as HTMLSelectElement;
   const copyPageBtn = $('copyPage') as HTMLButtonElement;
   const copyShareBtn = $('copyShare') as HTMLButtonElement;
 
@@ -356,6 +378,13 @@ async function main() {
       footer1: 'このページは Base 上の USDC 支払い用です（資金を預かりません）。',
       footer2: '送金は不可逆なので、宛先と金額を確認してから実行してください。',
       verifyPlaceholder: '0x...（66文字）',
+      lblCsvFrom: 'CSV開始日',
+      lblCsvTo: 'CSV終了日',
+      lblCsvSort: 'CSV並び順',
+      sortInvoiceIdAsc: 'invoiceId (昇順)',
+      sortInvoiceIdDesc: 'invoiceId (降順)',
+      sortTimeDesc: '日時 (新しい順)',
+      sortTimeAsc: '日時 (古い順)',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -383,6 +412,13 @@ async function main() {
       footer1: 'This page is for USDC payments on Base (non-custodial).',
       footer2: 'Transfers are irreversible. Please verify recipient and amount before sending.',
       verifyPlaceholder: '0x... (66 chars)',
+      lblCsvFrom: 'CSV from date',
+      lblCsvTo: 'CSV to date',
+      lblCsvSort: 'CSV sort',
+      sortInvoiceIdAsc: 'invoiceId (A→Z)',
+      sortInvoiceIdDesc: 'invoiceId (Z→A)',
+      sortTimeDesc: 'time (new→old)',
+      sortTimeAsc: 'time (old→new)',
     }
   } as const;
 
@@ -403,6 +439,7 @@ async function main() {
       invoiceGeneratedLabel: lang === 'ja' ? '生成された請求リンク' : 'Generated invoice link',
       pageUrlTitle: tr('pageUrlTitle'), pageUrlHint: tr('pageUrlHint'), shareUrlTitle: tr('shareUrlTitle'), shareUrlHint: tr('shareUrlHint'),
       footer1: tr('footer1'), footer2: tr('footer2'),
+      lblCsvFrom: tr('lblCsvFrom'), lblCsvTo: tr('lblCsvTo'), lblCsvSort: tr('lblCsvSort'),
     };
     Object.entries(textMap).forEach(([id, text]) => {
       const n = document.getElementById(id);
@@ -424,6 +461,14 @@ async function main() {
     copyShareBtn.textContent = tr('copyUrl');
     openInvoiceEl.textContent = tr('open');
     verifyTxEl.placeholder = tr('verifyPlaceholder');
+
+    const opts = csvSortEl.options;
+    if (opts.length >= 4) {
+      opts[0].text = tr('sortInvoiceIdAsc');
+      opts[1].text = tr('sortInvoiceIdDesc');
+      opts[2].text = tr('sortTimeDesc');
+      opts[3].text = tr('sortTimeAsc');
+    }
 
     langJaBtn.classList.toggle('primary', lang === 'ja');
     langEnBtn.classList.toggle('primary', lang === 'en');
@@ -1103,11 +1148,30 @@ async function main() {
   };
 
   exportCsvBtn.onclick = () => {
-    const rows = loadPaymentHistory();
+    let rows = loadPaymentHistory();
     if (!rows.length) {
       toast(lang === 'ja' ? '履歴がありません' : 'No records yet');
       return;
     }
+
+    const from = csvFromEl.value ? new Date(`${csvFromEl.value}T00:00:00`).getTime() : null;
+    const to = csvToEl.value ? new Date(`${csvToEl.value}T23:59:59.999`).getTime() : null;
+    if (from !== null) rows = rows.filter((r) => r.ts >= from);
+    if (to !== null) rows = rows.filter((r) => r.ts <= to);
+
+    const sort = csvSortEl.value;
+    rows.sort((a, b) => {
+      if (sort === 'invoiceIdAsc') return (a.invoiceId || '').localeCompare(b.invoiceId || '') || (a.ts - b.ts);
+      if (sort === 'invoiceIdDesc') return (b.invoiceId || '').localeCompare(a.invoiceId || '') || (b.ts - a.ts);
+      if (sort === 'timeAsc') return a.ts - b.ts;
+      return b.ts - a.ts;
+    });
+
+    if (!rows.length) {
+      toast(lang === 'ja' ? '条件に一致する履歴がありません' : 'No records match the selected filters');
+      return;
+    }
+
     const esc = (v: string) => `"${String(v || '').replace(/"/g, '""')}"`;
     const header = ['timestamp', 'txHash', 'to', 'amountUSDC', 'memo', 'invoiceId'];
     const body = rows.map((r) => [new Date(r.ts).toISOString(), r.txHash, r.to, r.amount, r.memo || '', r.invoiceId || '']);
