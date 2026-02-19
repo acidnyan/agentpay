@@ -225,6 +225,7 @@ async function main() {
         </div>
 
         <div id="msg" class="muted" style="margin-top:10px">JS loaded. Ready.</div>
+        <div id="diag" class="small" style="margin-top:6px"></div>
         <div id="tx" class="muted" style="margin-top:6px"></div>
         <div id="lastPayCard" class="small" style="margin-top:8px"></div>
         <div id="bal" class="muted" style="margin-top:6px"></div>
@@ -369,6 +370,7 @@ async function main() {
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const toChecksumEl = $('toChecksum')!;
   const msgEl = $('msg')!;
+  const diagEl = $('diag')!;
   const txEl = $('tx')!;
   const lastPayCardEl = $('lastPayCard')!;
   const balEl = $('bal')!;
@@ -486,6 +488,10 @@ async function main() {
       paySummaryTitle: '直近の支払いサマリー',
       paySummaryCopy: 'サマリーをコピー',
       noPaySummary: 'まだ支払いサマリーがありません。',
+      diagTitle: '起動診断',
+      diagWallet: 'ウォレットAPI',
+      diagRpc: 'Base RPC',
+      diagChain: '接続チェーン',
     },
     en: {
       walletNotConnected: 'Wallet: not connected',
@@ -545,6 +551,10 @@ async function main() {
       paySummaryTitle: 'Latest payment summary',
       paySummaryCopy: 'Copy summary',
       noPaySummary: 'No payment summary yet.',
+      diagTitle: 'Startup diagnostics',
+      diagWallet: 'Wallet API',
+      diagRpc: 'Base RPC',
+      diagChain: 'Connected chain',
     }
   } as const;
 
@@ -672,6 +682,31 @@ async function main() {
   }
   function setBalHtml(html: string) {
     balEl.innerHTML = html || '';
+  }
+
+  async function runStartupDiagnostics() {
+    const walletOk = !!window.ethereum?.request;
+
+    let rpcOk = false;
+    try {
+      const r = await fetch('https://mainnet.base.org', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
+      });
+      const j = await r.json();
+      rpcOk = !!j?.result;
+    } catch {
+      rpcOk = false;
+    }
+
+    let chainText = lang === 'ja' ? '未接続' : 'not connected';
+    try {
+      const cid = await window.ethereum?.request?.({ method: 'eth_chainId' });
+      if (cid) chainText = cid === CHAIN_ID_HEX ? `Base (${cid})` : `${cid}`;
+    } catch {}
+
+    diagEl.textContent = `${tr('diagTitle')}: ${walletOk ? '✅' : '❌'} ${tr('diagWallet')} / ${rpcOk ? '✅' : '❌'} ${tr('diagRpc')} / ${tr('diagChain')}: ${chainText}`;
   }
 
   let wcProvider: any = null;
@@ -1135,6 +1170,7 @@ async function main() {
         setPill();
         setMsg('接続しました（Injected Wallet）。');
         await updateUsdcBalance();
+        void runStartupDiagnostics();
         return;
       } catch (e: any) {
         showErr(`Injected接続に失敗: ${e?.message || e}`);
@@ -1157,6 +1193,7 @@ async function main() {
     setPill();
     setMsg('接続しました（WalletConnect）。');
     await updateUsdcBalance();
+    void runStartupDiagnostics();
   }
 
   async function disconnect() {
@@ -1172,6 +1209,7 @@ async function main() {
     connectedAddress = null;
     setPill();
     refresh();
+    void runStartupDiagnostics();
   }
 
   async function pay() {
@@ -1382,6 +1420,7 @@ async function main() {
     setLockUI();
     refresh();
     setPill();
+    void runStartupDiagnostics();
   }
 
   function switchLang(next: Lang) {
@@ -1394,6 +1433,7 @@ async function main() {
     setLockUI();
     setPill();
     refresh();
+    void runStartupDiagnostics();
   }
 
   langJaBtn.addEventListener('click', () => switchLang('ja'));
