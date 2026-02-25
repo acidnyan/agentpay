@@ -234,6 +234,9 @@ async function main() {
         </div>
         <div id="chainWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="tokenWarn" class="warn" style="margin-top:6px;display:none"></div>
+        <div class="btns" style="margin-top:6px">
+          <button id="alignToken" type="button" style="display:none">請求トークンに合わせる</button>
+        </div>
         <div id="sigWarn" class="warn" style="margin-top:6px;display:none"></div>
         <div id="issuerBadge" class="small" style="margin-top:6px;display:none"></div>
         <div id="toChecksum" class="small" style="margin-top:4px"></div>
@@ -421,6 +424,7 @@ async function main() {
   const invoiceIdEl = $('invoiceId') as HTMLInputElement;
   const chainWarnEl = $('chainWarn')!;
   const tokenWarnEl = $('tokenWarn')!;
+  const alignTokenBtn = $('alignToken') as HTMLButtonElement;
   const sigWarnEl = $('sigWarn')!;
   const issuerBadgeEl = $('issuerBadge')!;
   const toChecksumEl = $('toChecksum')!;
@@ -563,6 +567,7 @@ async function main() {
       noPaySummary: 'まだ支払いサマリーがありません。',
       chainMismatchWarn: 'チェーン不一致: 請求={chain} / 現在={current}',
       tokenMismatchWarn: 'トークン不一致: 請求={token} / 現在={current}',
+      alignToken: '請求トークンに合わせる',
       sigMismatchWarn: '請求リンクの改ざんを検知しました（署名不一致）。',
       issuerVerified: '発行者署名: 検証済み',
       diagTitle: '起動診断',
@@ -633,6 +638,7 @@ async function main() {
       noPaySummary: 'No payment summary yet.',
       chainMismatchWarn: 'Chain mismatch: invoice={chain} / current={current}',
       tokenMismatchWarn: 'Token mismatch: invoice={token} / current={current}',
+      alignToken: 'Match invoice token',
       sigMismatchWarn: 'Invoice link appears tampered (signature mismatch).',
       issuerVerified: 'Issuer signature: verified',
       diagTitle: 'Startup diagnostics',
@@ -709,6 +715,7 @@ async function main() {
     copyShareBtn.textContent = tr('copyUrl');
     openInvoiceEl.textContent = tr('open');
     useMyAddressBtn.textContent = tr('useMyAddress');
+    alignTokenBtn.textContent = tr('alignToken');
     verifyTxEl.placeholder = tr('verifyPlaceholder');
 
     const opts = csvSortEl.options;
@@ -958,7 +965,17 @@ async function main() {
     try {
       const v = localStorage.getItem('agentpay_payments');
       const arr = v ? JSON.parse(v) : [];
-      return Array.isArray(arr) ? arr : [];
+      if (!Array.isArray(arr)) return [];
+      return arr.map((r: any) => ({
+        ts: Number(r?.ts || 0),
+        txHash: String(r?.txHash || ''),
+        chain: (r?.chain === 'eth' || r?.chain === 'base') ? r.chain : currentChain,
+        token: (r?.token === 'usdt' || r?.token === 'usdc') ? r.token : 'usdc',
+        to: String(r?.to || ''),
+        amount: String(r?.amount || ''),
+        memo: r?.memo ? String(r.memo) : '',
+        invoiceId: r?.invoiceId ? String(r.invoiceId) : '',
+      }));
     } catch {
       return [];
     }
@@ -1249,9 +1266,11 @@ async function main() {
       const msg = tpl.replace('{token}', invoiceContextToken.toUpperCase()).replace('{current}', currentTokenKey.toUpperCase());
       tokenWarnEl.style.display = 'block';
       tokenWarnEl.textContent = msg;
+      alignTokenBtn.style.display = 'inline-flex';
     } else {
       tokenWarnEl.style.display = 'none';
       tokenWarnEl.textContent = '';
+      alignTokenBtn.style.display = 'none';
     }
 
     if (invoiceSigMismatch) {
@@ -1725,6 +1744,11 @@ async function main() {
 
   chainSelEl.addEventListener('change', () => switchChain((chainSelEl.value === 'eth' ? 'eth' : 'base')));
   tokenSelEl.addEventListener('change', () => switchToken((tokenSelEl.value === 'usdt' ? 'usdt' : 'usdc')));
+  alignTokenBtn.onclick = () => {
+    if (!invoiceContextToken) return;
+    switchToken(invoiceContextToken);
+    toast(lang === 'ja' ? '請求トークンに合わせました' : 'Matched invoice token');
+  };
   langJaBtn.addEventListener('click', () => switchLang('ja'));
   langEnBtn.addEventListener('click', () => switchLang('en'));
 
