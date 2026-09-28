@@ -1,14 +1,16 @@
 {
-  "name": "workspace",
+  "name": "agentpay",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Lightweight, non-custodial invoice dApp for Base USDC",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite --config agentpay/app/vite.config.js",
+    "build": "vite build --config agentpay/app/vite.config.js",
+    "preview": "vite preview --config agentpay/app/vite.config.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "acidnyan",
+  "license": "MIT",
   "dependencies": {
     "@walletconnect/ethereum-provider": "^2.16.1",
     "ethers": "^6.16.0"
