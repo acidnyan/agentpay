@@ -12,10 +12,10 @@
   "author": "acidnyan",
   "license": "MIT",
   "dependencies": {
-    "@walletconnect/ethereum-provider": "^2.16.1",
+    "@walletconnect/ethereum-provider": "^2.26.0",
     "ethers": "^6.16.0"
   },
   "devDependencies": {
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }
